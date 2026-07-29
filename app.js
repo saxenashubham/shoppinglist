@@ -9,12 +9,12 @@ import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, onSnapshot, setDoc, writeBatch, getDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig, ALLOWED, WORKER_URL } from "./config.js";
+import { shoppingListConfig, ALLOWED_EMAILS, WORKER_URL } from "./config.js";
 
 const html = htm.bind(h);
 
 
-const appFb = initializeApp(firebaseConfig);
+const appFb = initializeApp(shoppingListConfig);
 const auth = getAuth(appFb);
 const db = initializeFirestore(appFb, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
@@ -119,7 +119,7 @@ function App(){
   const toggleCat=key=>setCollapsed(c=>({...c,[key]:!c[key]}));
 
   useEffect(()=>onAuthStateChanged(auth,u=>{
-    if(u && !ALLOWED.includes((u.email||"").toLowerCase())){signOut(auth);setUser(null);return;}
+    if(u && !ALLOWED_EMAILS.includes((u.email||"").toLowerCase())){signOut(auth);setUser(null);return;}
     setUser(u||null);
   }),[]);
   useEffect(()=>{const on=()=>setOnline(true),off=()=>setOnline(false);
