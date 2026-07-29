@@ -8,7 +8,7 @@
 const MODEL = "claude-haiku-4-5-20251001";
 
 // Lock this to your GitHub Pages origin in production, e.g. "https://you.github.io"
-const ALLOW_ORIGIN = "https://saxenashubham.github.io";
+const ALLOW_ORIGIN = "*";
 
 const CORS = {
   "Access-Control-Allow-Origin": ALLOW_ORIGIN,

@@ -1,7 +1,7 @@
 // Cartpath service worker — network-first (new deploys land on next open),
 // cache fallback so the app shell opens offline. Firestore handles data offline itself.
-const CACHE = "cartpath-v1";
-const SHELL = ["./","./index.html","./styles.css","./app.js","./manifest.webmanifest","./icon-192.png","./icon-512.png"];
+const CACHE = "cartpath-v3";
+const SHELL = ["./","./index.html","./styles.css","./app.js","./config.js","./manifest.webmanifest","./icon-192.png","./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
