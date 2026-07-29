@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // The two household accounts. MUST MATCH the ALLOWED array in app.js.
+    function allowed() {
+      return request.auth != null
+        && request.auth.token.email.lower() in [
+          'you@gmail.com',
+          'wife@gmail.com'
+        ];
+    }
+
+    // Shared household data: config, learned dictionary, active list.
+    match /shoppinglist_config/{doc}      { allow read, write: if allowed(); }
+    match /shoppinglist_dictionary/{doc}  { allow read, write: if allowed(); }
+    match /shoppinglist_list/{doc}        { allow read, write: if allowed(); }
+
+    // Everything else denied.
+    match /{document=**}     { allow read, write: if false; }
+  }
+}
