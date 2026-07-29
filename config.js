@@ -20,4 +20,4 @@ export const ALLOWED_EMAILS = [
 ];
 
 // Your existing Cloudflare Worker (receipt vision). Leave "" to enter fields by hand.
-export const EXTRACT_URL = "https://shoppinglist.shubhamsaxena1492.workers.dev";
+export const WORKER_URL = "https://shoppinglist.shubhamsaxena1492.workers.dev";
