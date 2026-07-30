@@ -164,3 +164,17 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .sheet.tall{max-height:86dvh;overflow-y:auto}
 .orow{padding:9px 0;border-bottom:1px solid #f0f2ee}
 .orow .rname{display:block;margin-bottom:6px}
+/* ---- v6: hamburger, categories, staples ---- */
+.hbtn{font-size:20px;line-height:1;padding:2px 4px;color:var(--ink);text-decoration:none}
+.menuitem{width:100%;text-align:left;padding:14px 4px;font-size:16px;font-weight:600;color:var(--ink);border-bottom:1px solid #f0f2ee}
+.menuitem:last-child{border-bottom:none}
+.menuitem.mut{color:var(--muted);font-weight:500}
+.rowstar{flex:0 0 auto;width:38px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:18px;color:#c9a21e}
+.rowstar.on{color:#e8a91e}
+.strow{display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid #f0f2ee;cursor:pointer}
+.strow:last-of-type{border-bottom:none}
+.strow.off{opacity:.45}
+.strow .sname2{flex:1;font-size:16px;font-weight:500}
+.box.sm{width:24px;height:24px;border-radius:7px;border:2px solid #c3ccc5}
+.box.sm.on{background:var(--green);border-color:var(--green)}
+.box.sm svg{width:14px;height:14px;opacity:1;transform:none}
