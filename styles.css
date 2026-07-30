@@ -194,3 +194,14 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .brand{display:flex;align-items:center;gap:8px}
 .brandicon{width:26px;height:26px;border-radius:6px;flex:0 0 auto;display:block}
 .gatelogo{width:104px;height:104px;border-radius:24px;display:block;box-shadow:var(--shadow);margin-bottom:2px}
+/* check-in / check-out shop experience */
+.pickhead{font-family:var(--display);font-weight:600;font-size:16px;margin:4px 2px 12px}
+.picker{display:flex;flex-direction:column;gap:10px}
+.storecard{display:flex;align-items:center;gap:12px;background:var(--card);border:1.5px solid var(--line);border-radius:var(--r);padding:16px 15px;text-align:left;box-shadow:var(--shadow)}
+.storecard:active{background:#fbfaf5}
+.scdot{width:12px;height:12px;border-radius:4px;flex:0 0 auto}
+.scname{flex:1;font-size:17px;font-weight:600;color:var(--ink)}
+.sccount{font-size:13px;font-weight:600;color:var(--muted)}
+.checkin{display:flex;align-items:center;justify-content:space-between;gap:10px;background:color-mix(in srgb,var(--sc) 10%,#fff);border:1.5px solid var(--sc);border-radius:var(--r);padding:11px 14px;margin-bottom:12px;position:sticky;top:0;z-index:5}
+.cistore{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;color:var(--ink)}
+.ciout{color:var(--sc);font-weight:700}
