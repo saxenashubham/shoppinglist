@@ -209,3 +209,12 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .arow:last-of-type{border-bottom:none}
 .aname{font-weight:600;font-size:16px;margin-bottom:8px}
 .arow .sel.sm{width:100%;margin-bottom:8px}
+/* return attachments */
+.attachbtn{display:block;text-align:center;padding:12px;border:1.5px dashed var(--line);border-radius:var(--r);
+  font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.attachbtn input{display:none}
+.attachrow{position:relative;overflow:hidden;display:inline-flex;align-items:center}
+.attachrow input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.scrim.dark{background:rgba(10,15,12,.82);z-index:39}
+.imgview{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px}
+.imgview img{max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
