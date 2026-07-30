@@ -473,8 +473,7 @@ function App(){
       <div class="pickhead">Which store are you at?</div>
       <div class="picker">
         ${stores.map(s=>{const n=list.filter(i=>i.stores.includes(s.id)&&!i.checked).length;
-          return html`<button class="storecard" onClick=${()=>setCheckedIn(s.id)}>
-            <span class="scdot" style=${"background:"+s.color}></span>
+          return html`<button class="storecard" style=${"--sc:"+s.color} onClick=${()=>setCheckedIn(s.id)}>
             <span class="scname">${s.name}</span>
             <span class="sccount">${n} item${n===1?"":"s"}</span>
           </button>`;})}
