@@ -197,7 +197,7 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .gatelogo{width:104px;height:104px;border-radius:24px;display:block;box-shadow:var(--shadow);margin-bottom:2px}
 /* check-in / check-out shop experience */
 .pickhead{font-family:var(--display);font-weight:600;font-size:16px;margin:4px 2px 12px}
-.picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.picker{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .storecard{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-height:70px;
   background:color-mix(in srgb,var(--sc) 32%,#fff);border:1.5px solid color-mix(in srgb,var(--sc) 58%,#fff);
   border-radius:var(--r);padding:12px;text-align:left}
@@ -207,8 +207,8 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .sccount{font-size:12px;font-weight:600;color:#565d52}
 .checkin{display:flex;align-items:center;justify-content:space-between;gap:10px;background:color-mix(in srgb,var(--sc) 10%,#fff);border:1.5px solid var(--sc);border-radius:var(--r);padding:11px 14px;margin-bottom:12px;position:sticky;top:0;z-index:5}
 .cistore{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;color:var(--ink)}
-.checkin .ciout{color:#fff;background:var(--green);border:1.5px solid var(--green-deep);border-radius:8px;padding:8px 15px;font-weight:700;font-size:14px;box-shadow:var(--shadow)}
-.checkin .ciout:active{background:var(--green-deep)}
+.checkin .ciout{color:var(--ink);background:color-mix(in srgb,var(--sc) 60%,#fff);border:1.5px solid color-mix(in srgb,var(--sc) 90%,#333);border-radius:8px;padding:8px 15px;font-weight:700;font-size:14px;box-shadow:var(--shadow)}
+.checkin .ciout:active{background:color-mix(in srgb,var(--sc) 78%,#fff)}
 .arow{padding:11px 0;border-bottom:1px solid var(--line)}
 .arow:last-of-type{border-bottom:none}
 .aname{font-weight:600;font-size:16px;margin-bottom:8px}
@@ -223,3 +223,6 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .imgview{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px}
 .imgview img{max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
 .swatches.sm .sw.on::after{font-size:12px}
+.storecard.addtile{background:#fff;border:1.5px dashed var(--line);align-items:center;justify-content:center;gap:2px;color:var(--muted)}
+.storecard.addtile:active{background:#f7f5ef;filter:none}
+.addplus{font-size:24px;font-weight:700;line-height:1;color:var(--green)}
