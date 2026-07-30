@@ -1,6 +1,6 @@
 // Cartpath service worker — network-first (new deploys land on next open),
 // cache fallback so the app shell opens offline. Firestore handles data offline itself.
-const CACHE = "basketly-v8";
+const CACHE = "basketly-v9";
 const SHELL = ["./","./index.html","./styles.css","./app.js","./config.js","./favicon.ico","./manifest.webmanifest","./icon-192.png","./icon-512.png"];
 
 self.addEventListener("install", e => {
