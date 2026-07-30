@@ -1,4 +1,4 @@
-// Cartpath parse proxy — Cloudflare Worker.
+// Basketly parse proxy — Cloudflare Worker.
 // Holds your ANTHROPIC_API_KEY server-side so it never ships in the PWA.
 // Deploy: `wrangler deploy`  |  Set key: `wrangler secret put ANTHROPIC_API_KEY`
 //
