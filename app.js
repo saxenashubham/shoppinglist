@@ -102,7 +102,7 @@ function App(){
   const [list,setList]=useState([]);
   const [purch,setPurch]=useState([]);
   const [page,setPage]=useState("list");
-  const [shopStore,setShopStore]=useState(null);
+  const [checkedIn,setCheckedIn]=useState(null);
   const [draft,setDraft]=useState("");
   const [parsing,setParsing]=useState(false);
   const [review,setReview]=useState([]);
@@ -164,7 +164,7 @@ function App(){
       }
     })();
     const u1=onSnapshot(cfgDoc(),d=>{if(d.exists()){const dd=d.data();
-      if(dd.stores){setStores(dd.stores);setShopStore(p=>p||(dd.stores[0]&&dd.stores[0].id)||null);}
+      if(dd.stores){setStores(dd.stores);}
       if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);}});
     const u2=onSnapshot(collection(db,"shoppinglist_dictionary"),snap=>{const m={};snap.forEach(d=>{const x=d.data();m[x.name||d.id]={stores:x.stores||[],category:x.category||"Unsorted"};});setDict(m);});
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
@@ -217,17 +217,21 @@ function App(){
   async function removeCurrentItem(){ await run("removeitem", ()=>deleteDoc(doc(db,"shoppinglist_list",itemModal.id))); setItemModal(null); }
   const removeRow=it=>run("rm_"+it.id, ()=>deleteDoc(doc(db,"shoppinglist_list",it.id)));
 
-  async function markBought(){
-    const done=list.filter(i=>i.stores.includes(shopStore)&&i.checked); if(!done.length) return;
-    await run("markbought", async ()=>{
-      const b=writeBatch(db);
-      for(const i of done){
-        b.set(doc(collection(db,"shoppinglist_purchased")),{name:i.name,store:shopStore,date:todayISO(),status:"purchased",ts:serverTimestamp()});
-        b.delete(doc(db,"shoppinglist_list",i.id));
-      }
-      await b.commit();
-    });
-    flash(done.length+" marked bought");
+  async function checkOut(){
+    const store=checkedIn;
+    const done=list.filter(i=>i.stores.includes(store)&&i.checked);
+    if(done.length){
+      await run("checkout", async ()=>{
+        const b=writeBatch(db);
+        for(const i of done){
+          b.set(doc(collection(db,"shoppinglist_purchased")),{name:i.name,store,date:todayISO(),status:"purchased",ts:serverTimestamp()});
+          b.delete(doc(db,"shoppinglist_list",i.id));
+        }
+        await b.commit();
+      });
+      flash(done.length+" bought at "+sname(store));
+    }
+    setCheckedIn(null);
   }
 
   // ---- stores: add / rename / recolor / delete ----
@@ -265,7 +269,7 @@ function App(){
       await b.commit();
     });
     setStoreDraft(d=>d.filter(x=>x.id!==s.id));
-    if(shopStore===s.id) setShopStore(stores.find(x=>x.id!==s.id)?.id||null);
+    if(checkedIn===s.id) setCheckedIn(null);
     setDelStore(null); setReassign({});
   }
 
@@ -335,8 +339,8 @@ function App(){
     });
   }
   const listGroups=useMemo(()=>groupByCat(list,"list"),[list,collapsed,cats]);
-  const shopItems=useMemo(()=>list.filter(i=>i.stores.includes(shopStore)),[list,shopStore]);
-  const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+shopStore),[shopItems,collapsed,shopStore,cats]);
+  const shopItems=useMemo(()=>list.filter(i=>i.stores.includes(checkedIn)),[list,checkedIn]);
+  const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+checkedIn),[shopItems,collapsed,checkedIn,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
 
   const filteredPurch=useMemo(()=>{
@@ -401,27 +405,35 @@ function App(){
               </div>`)}
           <//>`)}`:null}
 
-    ${page==="shop"?html`
-      <div class="shopbar">
-        <select class="sel" value=${shopStore||""} onChange=${e=>setShopStore(e.target.value)}>
-          ${stores.map(s=>{const n=list.filter(i=>i.stores.includes(s.id)&&!i.checked).length;
-            return html`<option value=${s.id}>${s.name}${n?" ("+n+")":""}</option>`;})}
-        </select>
+    ${page==="shop"?( !checkedIn ? html`
+      <div class="pickhead">Which store are you at?</div>
+      <div class="picker">
+        ${stores.map(s=>{const n=list.filter(i=>i.stores.includes(s.id)&&!i.checked).length;
+          return html`<button class="storecard" onClick=${()=>setCheckedIn(s.id)}>
+            <span class="scdot" style=${"background:"+s.color}></span>
+            <span class="scname">${s.name}</span>
+            <span class="sccount">${n} item${n===1?"":"s"}</span>
+          </button>`;})}
+      </div>`
+    : html`
+      <div class="checkin" style=${"--sc:"+scolor(checkedIn)}>
+        <span class="cistore"><span class="scdot" style=${"background:"+scolor(checkedIn)}></span>At ${sname(checkedIn)}</span>
+        <button class="ghost ciout" onClick=${checkOut}>Check out</button>
       </div>
       ${shopGroups.length===0
-        ? html`<div class="empty"><div class="big">Nothing for ${sname(shopStore)} yet</div>Add items on the List tab.</div>`
+        ? html`<div class="empty"><div class="big">Nothing left for ${sname(checkedIn)}</div>You're all done here \u2014 check out.</div>`
         : shopGroups.map(g=>{
             const allDone=g.items.every(i=>i.checked); const open=allDone?false:g.open;
             return html`
-            <${Panel} title=${g.cat} count=${g.items.filter(i=>!i.checked).length+"/"+g.items.length} color=${scolor(shopStore)} open=${open} onToggle=${()=>toggleCat(g.key)}>
+            <${Panel} title=${g.cat} count=${g.items.filter(i=>!i.checked).length+"/"+g.items.length} color=${scolor(checkedIn)} open=${open} onToggle=${()=>toggleCat(g.key)}>
               ${g.items.map(it=>html`
-                <div class=${"item"+(it.checked?" done":"")} style=${"--sc:"+scolor(shopStore)} onClick=${()=>toggle(it)}>
+                <div class=${"item"+(it.checked?" done":"")} style=${"--sc:"+scolor(checkedIn)} onClick=${()=>toggle(it)}>
                   <div class="box">${check}</div>
                   <div class="label">${it.name}
-                    ${it.stores.length>1?html`<div class="also">${it.stores.filter(x=>x!==shopStore).map(x=>html`<i style=${"background:"+scolor(x)}></i>`)}</div>`:null}
+                    ${it.stores.length>1?html`<div class="also">${it.stores.filter(x=>x!==checkedIn).map(x=>html`<i style=${"background:"+scolor(x)}></i>`)}</div>`:null}
                   </div>
                 </div>`)}
-            <//>`;})}`:null}
+            <//>`;})}` ):null}
 
     ${page==="history"?html`
       <div class="pagetitle">Purchase History</div>
@@ -593,8 +605,8 @@ function App(){
         <button class="primary" disabled=${!retDate||isBusy("confirmret")} onClick=${confirmReturn}>${isBusy("confirmret")?html`<${Spin}/>Saving\u2026`:"Mark for return"}</button>
       </div>`:null}
 
-    ${(page==="shop" && shopChecked>0)?html`
-      <div class="submitbar"><div class="inner"><button class="primary" style="width:100%" disabled=${isBusy("markbought")} onClick=${markBought}>${isBusy("markbought")?html`<${Spin}/>Saving\u2026`:"Mark "+shopChecked+" bought at "+sname(shopStore)}</button></div></div>`:null}
+    ${(page==="shop" && checkedIn)?html`
+      <div class="submitbar"><div class="inner"><button class="primary" style="width:100%" disabled=${isBusy("checkout")} onClick=${checkOut}>${isBusy("checkout")?html`<${Spin}/>Saving\u2026`:(shopChecked>0?"Check out \u00b7 "+shopChecked+" bought":"Check out")}</button></div></div>`:null}
     ${toast?html`<div class="toast">${toast}</div>`:null}
   `;
 }
