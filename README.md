@@ -1,4 +1,4 @@
-# Cartpath — deploy guide
+# Basketly — deploy guide
 
 A frameworkless PWA (Preact + htm from CDN, no build step) on GitHub Pages, talking to
 Firebase for shared real-time data and a Cloudflare Worker for Claude-powered item routing.
