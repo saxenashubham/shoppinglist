@@ -477,6 +477,7 @@ function App(){
             <span class="scname">${s.name}</span>
             <span class="sccount">${n} item${n===1?"":"s"}</span>
           </button>`;})}
+        <button class="storecard addtile" onClick=${openStores}><span class="addplus">+</span><span class="sccount">Add store</span></button>
       </div>`
     : html`
       <div class="checkin" style=${"--sc:"+scolor(checkedIn)}>
