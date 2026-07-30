@@ -26,11 +26,11 @@ const RETURNS_DIR = "basketly/returns";  // own folder, separate from the financ
 
 const CATS = ["Produce","Bakery","Dairy","Meat","Frozen","Spices","Staples","Household","Unsorted"];
 const DEFAULT_STORES = [
-  { id:"heb", name:"HEB", color:"#e01a2b" },
-  { id:"walmart", name:"Walmart", color:"#0071dc" },
-  { id:"indian", name:"Indian Store", color:"#cf7a1c" },
+  { id:"heb", name:"HEB", color:"#f2a7a1" },
+  { id:"walmart", name:"Walmart", color:"#a8c8ec" },
+  { id:"indian", name:"Indian Store", color:"#f2c79b" },
 ];
-const STORE_SWATCHES = ["#e01a2b","#0071dc","#cf7a1c","#2f6b4f","#7a4fd0","#128a7c","#c0398b","#b06a12"];
+const STORE_SWATCHES = ["#f2a7a1","#a8c8ec","#f2c79b","#a9d8b8","#c9b8e8","#9ad9d2","#f0b6d3","#e0cfa0"];
 const SEED_DICT = {
   cilantro:{stores:["heb","walmart","indian"],category:"Produce"},
   onion:{stores:["heb","walmart","indian"],category:"Produce"},
