@@ -360,9 +360,8 @@ function App(){
 
   return html`
     <div class="top">
-      <div class="brand">Basketly<span class="dot">.</span></div>
-      <div class="who">${(user.email||"").split("@")[0]}
-        <button class="hbtn" onClick=${()=>setMenu(true)} aria-label="Menu">\u2630</button></div>
+      <div class="brand"><img class="brandicon" src="./icon-192.png" alt="" />Basketly<span class="dot">.</span></div>
+      <button class="hbtn" onClick=${()=>setMenu(true)} aria-label="Menu">\u2630</button>
     </div>
 
     ${!online?html`<div class="banner offline">Offline \u2014 changes sync when you're back</div>`:null}
@@ -535,15 +534,16 @@ function App(){
         <button class="ghost" onClick=${()=>setDelStore(null)}>Cancel</button>
       </div>`:null}
 
-    <!-- hamburger menu -->
+    <!-- dropdown menu (anchored under the hamburger) -->
     ${menu?html`
-      <div class="scrim" onClick=${()=>setMenu(false)}></div>
-      <div class="sheet">
-        <div class="lead">Menu</div>
-        <button class="menuitem" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>\u2605 Staples</button>
-        <button class="menuitem" onClick=${()=>{setMenu(false);openStores();}}>Manage stores</button>
-        <button class="menuitem" onClick=${()=>{setMenu(false);openCats();}}>Manage categories</button>
-        <button class="menuitem mut" onClick=${()=>signOut(auth)}>Sign out</button>
+      <div class="menuscrim" onClick=${()=>setMenu(false)}></div>
+      <div class="dropdown">
+        <div class="ddemail">${user.email}</div>
+        <button class="ddm" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>Staples</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openStores();}}>Manage stores</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage categories</button>
+        <div class="ddsep"></div>
+        <button class="ddm ddout" onClick=${()=>signOut(auth)}>Sign out</button>
       </div>`:null}
 
     <!-- categories -->
