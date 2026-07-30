@@ -205,3 +205,7 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .checkin{display:flex;align-items:center;justify-content:space-between;gap:10px;background:color-mix(in srgb,var(--sc) 10%,#fff);border:1.5px solid var(--sc);border-radius:var(--r);padding:11px 14px;margin-bottom:12px;position:sticky;top:0;z-index:5}
 .cistore{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15px;color:var(--ink)}
 .ciout{color:var(--sc);font-weight:700}
+.arow{padding:11px 0;border-bottom:1px solid var(--line)}
+.arow:last-of-type{border-bottom:none}
+.aname{font-weight:600;font-size:16px;margin-bottom:8px}
+.arow .sel.sm{width:100%;margin-bottom:8px}
