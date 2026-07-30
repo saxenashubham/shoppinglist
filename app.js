@@ -9,6 +9,9 @@ import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getStorage, ref as sref, uploadBytes, getDownloadURL, deleteObject
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { shoppingListConfig, ALLOWED_EMAILS, WORKER_URL } from "./config.js";
 
 const html = htm.bind(h);
@@ -18,6 +21,8 @@ const auth = getAuth(appFb);
 const db = initializeFirestore(appFb, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
+const storage = getStorage(appFb);
+const RETURNS_DIR = "basketly/returns";  // own folder, separate from the finance app's receipts
 
 const CATS = ["Produce","Bakery","Dairy","Meat","Frozen","Spices","Staples","Household","Unsorted"];
 const DEFAULT_STORES = [
@@ -126,6 +131,8 @@ function App(){
   const [editStores,setEditStores]=useState([]);
   const [retModal,setRetModal]=useState(null);
   const [retDate,setRetDate]=useState("");
+  const [retFile,setRetFile]=useState(null);
+  const [viewImg,setViewImg]=useState(null);
   const [pendingOnly,setPendingOnly]=useState(false);
   const [pFilterStore,setPFilterStore]=useState("all");
   const [pFilterRange,setPFilterRange]=useState("30");
@@ -353,10 +360,32 @@ function App(){
     setStaplesModal(false); setStapleSel({}); flash(add.length+" added to list");
   }
 
+  async function uploadAttach(purchaseId, file){
+    if(!file) return;
+    const ok = (file.type||"").startsWith("image/") || file.type==="application/pdf";
+    if(!ok){ flash("Only image or PDF"); return; }
+    if(file.size > 15*1024*1024){ flash("File too large (max 15MB)"); return; }
+    await run("attach_"+purchaseId, async ()=>{
+      const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_").slice(-60);
+      const path=`${RETURNS_DIR}/${purchaseId}/${Date.now()}_${safe}`;
+      const r=sref(storage,path);
+      await uploadBytes(r,file);
+      const url=await getDownloadURL(r);
+      await setDoc(doc(db,"shoppinglist_purchased",purchaseId),{attachUrl:url,attachType:file.type,attachPath:path},{merge:true});
+    });
+    flash("Attached");
+  }
+  function openAttachment(p){
+    if(!p.attachUrl) return;
+    if((p.attachType||"").startsWith("image/")) setViewImg(p.attachUrl);
+    else window.open(p.attachUrl,"_blank");
+  }
   async function confirmReturn(){
     if(!retDate||!retModal) return;
-    await run("confirmret", ()=>setDoc(doc(db,"shoppinglist_purchased",retModal.id),{status:"returning",returnByDate:retDate},{merge:true}));
+    const id=retModal.id, file=retFile;
+    await run("confirmret", ()=>setDoc(doc(db,"shoppinglist_purchased",id),{status:"returning",returnByDate:retDate},{merge:true}));
     setRetModal(null); setRetDate("");
+    if(file){ await uploadAttach(id,file); setRetFile(null); }
   }
   const resolveReturn=(id,status,key)=>run(key, ()=>setDoc(doc(db,"shoppinglist_purchased",id),{status},{merge:true}));
 
@@ -500,8 +529,10 @@ function App(){
               </div>
               <div class="pact">
                 <button class=${"rowstar"+(isStaple(p.name)?" on":"")} onClick=${()=>toggleStaple(p.name,(dict[p.name]&&dict[p.name].stores)||[p.store],(dict[p.name]&&dict[p.name].category)||"Unsorted")}>${isStaple(p.name)?"\u2605":"\u2606"}</button>
-                ${(!ret && p.status!=="returned" && p.status!=="kept")?html`<button class="ghost" onClick=${()=>{setRetModal(p);setRetDate("");}}>Return</button>`:null}
+                ${(!ret && p.status!=="returned" && p.status!=="kept")?html`<button class="ghost" onClick=${()=>{setRetModal(p);setRetDate("");setRetFile(null);}}>Return</button>`:null}
                 ${ret?html`
+                  ${p.attachUrl?html`<button class="ghost" onClick=${()=>openAttachment(p)}>View</button>`
+                    :html`<label class="ghost attachrow">${isBusy("attach_"+p.id)?html`<${Spin} g=${true}/>`:"Attach"}<input type="file" accept="image/*,application/pdf" onChange=${e=>{const f=e.target.files[0]; if(f) uploadAttach(p.id,f);}} /></label>`}
                   <button class="ghost" disabled=${isBusy(rk)} onClick=${()=>resolveReturn(p.id,"returned",rk)}>${isBusy(rk)?html`<${Spin} g=${true}/>`:"Returned"}</button>
                   <button class="ghost mut" disabled=${isBusy(kk)} onClick=${()=>resolveReturn(p.id,"kept",kk)}>${isBusy(kk)?html`<${Spin} g=${true}/>`:"Keeping"}</button>`:null}
                 ${(p.status==="returned"||p.status==="kept")?html`<span class="tag">${p.status}</span>`:null}
@@ -657,8 +688,16 @@ function App(){
         <div class="lead">Return \u201c${retModal.name}\u201d</div>
         <div class="hint">Bought at ${sname(retModal.store)} on ${retModal.date}. Enter the return-by date \u2014 a red banner appears within 5 days of it.</div>
         <input class="tin" type="date" value=${retDate} min=${todayISO()} onInput=${e=>setRetDate(e.target.value)} />
+        <label class="attachbtn">${retFile?("\u2713 "+retFile.name):"\ud83d\udcce Attach receipt / QR / label \u2014 image or PDF (optional)"}
+          <input type="file" accept="image/*,application/pdf" onChange=${e=>setRetFile(e.target.files[0]||null)} />
+        </label>
         <button class="primary" disabled=${!retDate||isBusy("confirmret")} onClick=${confirmReturn}>${isBusy("confirmret")?html`<${Spin}/>Saving\u2026`:"Mark for return"}</button>
       </div>`:null}
+
+    <!-- image viewer -->
+    ${viewImg?html`
+      <div class="scrim dark" onClick=${()=>setViewImg(null)}></div>
+      <div class="imgview" onClick=${()=>setViewImg(null)}><img src=${viewImg} alt="attachment" /></div>`:null}
 
     ${(page==="shop" && checkedIn)?html`
       <div class="submitbar"><div class="inner"><button class="primary" style="width:100%" disabled=${isBusy("checkout")} onClick=${checkOut}>${isBusy("checkout")?html`<${Spin}/>Saving\u2026`:(shopChecked>0?"Check out \u00b7 "+shopChecked+" bought":"Check out")}</button></div></div>`:null}

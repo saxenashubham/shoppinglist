@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Basketly's two household accounts (same as your Firestore allowlist).
+    function basketlyAllowed() {
+      return request.auth != null
+        && request.auth.token.email.lower() in [
+          'you@gmail.com',
+          'wife@gmail.com'
+        ];
+    }
+
+    // Basketly return attachments live under their own folder.
+    match /basketly/returns/{purchaseId}/{file=**} {
+      allow read, write: if basketlyAllowed();
+    }
+
+    // IMPORTANT: keep your finance app's existing Storage rules above/below this
+    // block — MERGE, don't replace. Do not add a catch-all deny that would
+    // break the finance app's receipt paths.
+  }
+}
