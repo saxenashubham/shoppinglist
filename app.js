@@ -354,7 +354,9 @@ function App(){
   const check=html`<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
   if(user===undefined) return html`<div class="gate"><div class="brand">Basketly<span class="dot">.</span></div><${Loader} label="Starting\u2026"/></div>`;
-  if(user===null) return html`<div class="gate"><div class="brand">Basketly<span class="dot">.</span></div>
+  if(user===null) return html`<div class="gate">
+    <img class="gatelogo" src="./icon-512.png" alt="Basketly" />
+    <div class="brand">Basketly<span class="dot">.</span></div>
     <p>Your shared grocery list. Sign in with the household Google account.</p>
     <button class="primary" onClick=${signIn}>Sign in with Google</button></div>`;
 
