@@ -193,3 +193,4 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .ddm.ddout{color:var(--red)}
 .brand{display:flex;align-items:center;gap:8px}
 .brandicon{width:26px;height:26px;border-radius:6px;flex:0 0 auto;display:block}
+.gatelogo{width:104px;height:104px;border-radius:24px;display:block;box-shadow:var(--shadow);margin-bottom:2px}
