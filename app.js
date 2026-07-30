@@ -125,6 +125,15 @@ function App(){
   const [pFilterStore,setPFilterStore]=useState("all");
   const [pFilterRange,setPFilterRange]=useState("30");
   const [sortBy,setSortBy]=useState("date");
+  const [cats,setCats]=useState(CATS);
+  const [catModal,setCatModal]=useState(false);
+  const [catDraft,setCatDraft]=useState([]);
+  const [newCat,setNewCat]=useState("");
+  const [staples,setStaples]=useState([]);
+  const [staplesModal,setStaplesModal]=useState(false);
+  const [stapleSel,setStapleSel]=useState({});
+  const [newStaple,setNewStaple]=useState("");
+  const [menu,setMenu]=useState(false);
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
@@ -154,11 +163,14 @@ function App(){
         await b.commit();
       }
     })();
-    const u1=onSnapshot(cfgDoc(),d=>{if(d.exists()&&d.data().stores){const s=d.data().stores;setStores(s);setShopStore(p=>p||(s[0]&&s[0].id)||null);}});
+    const u1=onSnapshot(cfgDoc(),d=>{if(d.exists()){const dd=d.data();
+      if(dd.stores){setStores(dd.stores);setShopStore(p=>p||(dd.stores[0]&&dd.stores[0].id)||null);}
+      if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);}});
     const u2=onSnapshot(collection(db,"shoppinglist_dictionary"),snap=>{const m={};snap.forEach(d=>{const x=d.data();m[x.name||d.id]={stores:x.stores||[],category:x.category||"Unsorted"};});setDict(m);});
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
     const u4=onSnapshot(collection(db,"shoppinglist_purchased"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setPurch(a);});
-    return()=>{u1();u2();u3();u4();};
+    const u5=onSnapshot(collection(db,"shoppinglist_staples"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setStaples(a);});
+    return()=>{u1();u2();u3();u4();u5();};
   },[user]);
 
   async function signIn(){try{await signInWithPopup(auth,new GoogleAuthProvider());}catch{flash("Sign-in failed");}}
@@ -257,6 +269,51 @@ function App(){
     setDelStore(null); setReassign({});
   }
 
+  // ---- categories ----
+  function openCats(){ setCatDraft(cats.filter(c=>c!=="Unsorted")); setNewCat(""); setCatModal(true); }
+  async function addCat(){
+    const c=newCat.trim(); if(!c) return;
+    if(cats.some(x=>x.toLowerCase()===c.toLowerCase())){flash("Category exists");return;}
+    const next=[...cats.filter(x=>x!=="Unsorted"),c,"Unsorted"];
+    await run("addcat", ()=>setDoc(cfgDoc(),{categories:next},{merge:true}));
+    setNewCat(""); flash(c+" added");
+  }
+  async function deleteCat(c){
+    const affected=list.filter(i=>(i.category||"Unsorted")===c);
+    if(!confirm(`Delete category "${c}"? ${affected.length} item(s) move to Unsorted.`)) return;
+    await run("delcat_"+c, async ()=>{
+      const b=writeBatch(db);
+      b.set(cfgDoc(),{categories:[...cats.filter(x=>x!==c&&x!=="Unsorted"),"Unsorted"]},{merge:true});
+      affected.forEach(i=>{ b.set(doc(db,"shoppinglist_list",i.id),{category:"Unsorted"},{merge:true}); b.set(doc(db,"shoppinglist_dictionary",slug(i.key)),{name:i.key,category:"Unsorted"},{merge:true}); });
+      await b.commit();
+    });
+    setCatDraft(d=>d.filter(x=>x!==c));
+  }
+
+  // ---- staples ----
+  const isStaple=name=>staples.some(s=>s.name===name);
+  function toggleStaple(name,st,cat){
+    const ref=doc(db,"shoppinglist_staples",slug(name));
+    return run("star_"+slug(name), ()=> isStaple(name) ? deleteDoc(ref) : setDoc(ref,{name,stores:st||[],category:cat||"Unsorted"}));
+  }
+  async function addNewStaple(){
+    const nm=normalizeName(newStaple); if(!nm) return;
+    const meta=lookup(dict,nm)||{stores:[],category:"Unsorted"};
+    await run("addstaple", ()=>setDoc(doc(db,"shoppinglist_staples",slug(nm)),{name:nm,stores:meta.stores||[],category:meta.category||"Unsorted"}));
+    setNewStaple("");
+  }
+  async function addStaplesToList(){
+    const existing=new Set(list.map(i=>i.key));
+    const add=staples.filter(s=>stapleSel[s.id] && !existing.has(s.name));
+    if(!add.length){ setStaplesModal(false); setStapleSel({}); return; }
+    await run("addstaples", async ()=>{
+      const b=writeBatch(db);
+      add.forEach(s=>b.set(doc(collection(db,"shoppinglist_list")),{key:s.name,name:s.name,stores:[...(s.stores||[])],category:s.category||"Unsorted",checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()}));
+      await b.commit();
+    });
+    setStaplesModal(false); setStapleSel({}); flash(add.length+" added to list");
+  }
+
   async function confirmReturn(){
     if(!retDate||!retModal) return;
     await run("confirmret", ()=>setDoc(doc(db,"shoppinglist_purchased",retModal.id),{status:"returning",returnByDate:retDate},{merge:true}));
@@ -269,16 +326,17 @@ function App(){
   const overdue=dueReturns.some(p=>daysUntil(p.returnByDate)<0);
 
   function groupByCat(items, keyPrefix){
-    const byCat={}; for(const it of items){(byCat[it.category]||=[]).push(it);}
-    return CATS.filter(c=>byCat[c]).map(c=>{
+    const byCat={}; for(const it of items){(byCat[it.category||"Unsorted"]||=[]).push(it);}
+    const order=[...cats.filter(c=>byCat[c]), ...Object.keys(byCat).filter(c=>!cats.includes(c))];
+    return order.map(c=>{
       const key=keyPrefix+":"+c;
       const its=byCat[c].slice().sort((a,b)=>((a.checked?1:0)-(b.checked?1:0))||a.name.localeCompare(b.name));
       return {cat:c,key,items:its,open:!collapsed[key]};
     });
   }
-  const listGroups=useMemo(()=>groupByCat(list,"list"),[list,collapsed]);
+  const listGroups=useMemo(()=>groupByCat(list,"list"),[list,collapsed,cats]);
   const shopItems=useMemo(()=>list.filter(i=>i.stores.includes(shopStore)),[list,shopStore]);
-  const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+shopStore),[shopItems,collapsed,shopStore]);
+  const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+shopStore),[shopItems,collapsed,shopStore,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
 
   const filteredPurch=useMemo(()=>{
@@ -303,7 +361,8 @@ function App(){
   return html`
     <div class="top">
       <div class="brand">Cartpath<span class="dot">.</span></div>
-      <div class="who">${(user.email||"").split("@")[0]} <button onClick=${()=>signOut(auth)}>Sign out</button></div>
+      <div class="who">${(user.email||"").split("@")[0]}
+        <button class="hbtn" onClick=${()=>setMenu(true)} aria-label="Menu">\u2630</button></div>
     </div>
 
     ${!online?html`<div class="banner offline">Offline \u2014 changes sync when you're back</div>`:null}
@@ -322,11 +381,10 @@ function App(){
     ${loading?html`<${Loader} label="Loading your list\u2026"/>`:html`
     ${page==="list"?html`
       <div class="pagehead">
-        <button class="primary sm" onClick=${()=>setShowAdd(true)}>+ Add items</button>
-        <button class="ghost" onClick=${openStores}>Manage stores</button>
+        <button class="primary sm" style="flex:1" onClick=${()=>setShowAdd(true)}>+ Add items</button>
       </div>
       ${list.length===0
-        ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d to paste your voice list.</div>`
+        ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Staples.</div>`
         : listGroups.map(g=>html`
           <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}>
             ${g.items.map(it=>html`
@@ -337,6 +395,7 @@ function App(){
                     ? it.stores.map(s=>html`<i class="sq" style=${"background:"+scolor(s)} title=${sname(s)}></i>`)
                     : html`<em class="uns">unsorted</em>`}</span>
                 </button>
+                <button class=${"rowstar"+(isStaple(it.name)?" on":"")} onClick=${()=>toggleStaple(it.name,it.stores,it.category)}>${isBusy("star_"+slug(it.name))?html`<${Spin} g=${true}/>`:(isStaple(it.name)?"\u2605":"\u2606")}</button>
                 <button class="rowx" onClick=${()=>removeRow(it)}>${isBusy("rm_"+it.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
               </div>`)}
           <//>`)}`:null}
@@ -392,6 +451,7 @@ function App(){
                   ${ret?html`\u00b7 <b>${d<0?"overdue":"return in "+d+"d"}</b>`:null}</span>
               </div>
               <div class="pact">
+                <button class=${"rowstar"+(isStaple(p.name)?" on":"")} onClick=${()=>toggleStaple(p.name,(dict[p.name]&&dict[p.name].stores)||[p.store],(dict[p.name]&&dict[p.name].category)||"Unsorted")}>${isStaple(p.name)?"\u2605":"\u2606"}</button>
                 ${(!ret && p.status!=="returned" && p.status!=="kept")?html`<button class="ghost" onClick=${()=>{setRetModal(p);setRetDate("");}}>Return</button>`:null}
                 ${ret?html`
                   <button class="ghost" disabled=${isBusy(rk)} onClick=${()=>resolveReturn(p.id,"returned",rk)}>${isBusy(rk)?html`<${Spin} g=${true}/>`:"Returned"}</button>
@@ -429,7 +489,7 @@ function App(){
         <div class="lead">${itemModal.name}</div>
         <div class="hint">Category</div>
         <select class="sel" value=${editCat} onChange=${e=>setEditCat(e.target.value)}>
-          ${CATS.map(c=>html`<option value=${c}>${c}</option>`)}
+          ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
         </select>
         <div class="hint">Stores</div>
         <div class="chiprow">${stores.map(s=>html`<button class=${"chip mini"+(editStores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleEditStore(s.id)}>
@@ -473,6 +533,52 @@ function App(){
           </div>`)}
         <button class="danger" disabled=${isBusy("delstore_"+delStore.id)} onClick=${()=>commitDelete(delStore,reassign)}>${isBusy("delstore_"+delStore.id)?html`<${Spin} g=${true}/>`:"Delete store & apply"}</button>
         <button class="ghost" onClick=${()=>setDelStore(null)}>Cancel</button>
+      </div>`:null}
+
+    <!-- hamburger menu -->
+    ${menu?html`
+      <div class="scrim" onClick=${()=>setMenu(false)}></div>
+      <div class="sheet">
+        <div class="lead">Menu</div>
+        <button class="menuitem" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>\u2605 Staples</button>
+        <button class="menuitem" onClick=${()=>{setMenu(false);openStores();}}>Manage stores</button>
+        <button class="menuitem" onClick=${()=>{setMenu(false);openCats();}}>Manage categories</button>
+        <button class="menuitem mut" onClick=${()=>signOut(auth)}>Sign out</button>
+      </div>`:null}
+
+    <!-- categories -->
+    ${catModal?html`
+      <div class="scrim" onClick=${()=>setCatModal(false)}></div>
+      <div class="sheet tall">
+        <div class="lead">Categories</div>
+        <div class="hint">This order is how items group on the List and Shop pages. \u201cUnsorted\u201d always stays last.</div>
+        ${catDraft.map(c=>html`
+          <div class="serow"><span class="flex">${c}</span>
+            <button class="rowx" disabled=${isBusy("delcat_"+c)} onClick=${()=>deleteCat(c)}>${isBusy("delcat_"+c)?html`<${Spin} g=${true}/>`:"\ud83d\uddd1"}</button>
+          </div>`)}
+        <div class="lead" style="margin-top:10px">Add a category</div>
+        <input class="tin" placeholder="e.g. Clothes" value=${newCat} onInput=${e=>setNewCat(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")addCat();}} />
+        <button class="primary" disabled=${!newCat.trim()||isBusy("addcat")} onClick=${addCat}>${isBusy("addcat")?html`<${Spin}/>Adding\u2026`:"Add category"}</button>
+      </div>`:null}
+
+    <!-- staples palette -->
+    ${staplesModal?html`
+      <div class="scrim" onClick=${()=>setStaplesModal(false)}></div>
+      <div class="sheet tall">
+        <div class="lead">Staples</div>
+        <div class="hint">Your regulars. Tick what you need this week and add them all at once. Items already on the list are greyed out.</div>
+        <input class="tin" placeholder="Add a staple (e.g. milk)" value=${newStaple} onInput=${e=>setNewStaple(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")addNewStaple();}} />
+        ${staples.length===0?html`<div class="hint">No staples yet \u2014 star items on the List or in Purchase History to keep them here.</div>`:null}
+        ${staples.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>{
+          const onList=list.some(i=>i.key===s.name);
+          return html`<div class=${"strow"+(onList?" off":"")} onClick=${()=>{ if(!onList) setStapleSel(v=>({...v,[s.id]:!v[s.id]})); }}>
+            <div class=${"box sm"+((stapleSel[s.id]&&!onList)?" on":"")}>${(stapleSel[s.id]&&!onList)?check:null}</div>
+            <span class="sname2">${s.name}</span>
+            <span class="lstores">${(s.stores||[]).map(x=>html`<i class="sq" style=${"background:"+scolor(x)}></i>`)}</span>
+            ${onList?html`<span class="tag">on list</span>`:null}
+            <button class="rowx" onClick=${e=>{e.stopPropagation();toggleStaple(s.name,s.stores,s.category);}}>${isBusy("star_"+s.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
+          </div>`;})}
+        <button class="primary" disabled=${isBusy("addstaples")||!Object.values(stapleSel).some(Boolean)} onClick=${addStaplesToList}>${isBusy("addstaples")?html`<${Spin}/>Adding\u2026`:"Add selected to list"}</button>
       </div>`:null}
 
     <!-- return date -->

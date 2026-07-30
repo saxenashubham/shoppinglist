@@ -16,6 +16,7 @@ service cloud.firestore {
     match /shoppinglist_dictionary/{doc}  { allow read, write: if allowed(); }
     match /shoppinglist_list/{doc}        { allow read, write: if allowed(); }
     match /shoppinglist_purchased/{doc}   { allow read, write: if allowed(); }
+    match /shoppinglist_staples/{doc}     { allow read, write: if allowed(); }
 
     // Everything else denied.
     match /{document=**}     { allow read, write: if false; }
