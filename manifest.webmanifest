@@ -1,6 +1,6 @@
 {
-  "name": "Cartpath",
-  "short_name": "Cartpath",
+  "name": "Basketly",
+  "short_name": "Basketly",
   "description": "Shared grocery list that routes each item to the right store.",
   "start_url": "./",
   "scope": "./",
