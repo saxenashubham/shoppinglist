@@ -67,16 +67,20 @@ function lookup(dict, name){
   return null;
 }
 async function routeUnknowns(names, stores){
-  const res = await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({items:names,stores})});
-  if(!res.ok) throw new Error("worker "+res.status);
-  const arr = await res.json();
-  const out={}, ids=stores.map(s=>s.id);
-  for(const r of (arr||[])){
-    const nm=normalizeName(r.name||""); if(!nm) continue;
-    out[nm]={stores:(r.stores||[]).filter(s=>ids.includes(s)),category:CATS.includes(r.category)?r.category:"Unsorted"};
-  }
-  return out;
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(), 20000);
+  try{
+    const res = await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({items:names,stores}),signal:ctrl.signal});
+    if(!res.ok) throw new Error("worker "+res.status);
+    const arr = await res.json();
+    const out={}, ids=stores.map(s=>s.id);
+    for(const r of (arr||[])){
+      const nm=normalizeName(r.name||""); if(!nm) continue;
+      out[nm]={stores:(r.stores||[]).filter(s=>ids.includes(s)),category:CATS.includes(r.category)?r.category:"Unsorted"};
+    }
+    return out;
+  } finally { clearTimeout(t); }
 }
 
 function Spin({g}){ return html`<span class=${"spin"+(g?" g":"")}></span>`; }
@@ -106,6 +110,7 @@ function App(){
   const [draft,setDraft]=useState("");
   const [parsing,setParsing]=useState(false);
   const [review,setReview]=useState([]);
+  const [assignList,setAssignList]=useState([]);
   const [collapsed,setCollapsed]=useState({});
   const [toast,setToast]=useState("");
   const [online,setOnline]=useState(navigator.onLine);
@@ -179,20 +184,50 @@ function App(){
     const names=splitBlob(draft); if(!names.length) return;
     const unknown=names.filter(n=>!lookup(dict,n));
     let learned={};
-    if(unknown.length){setParsing(true);
-      try{learned=await routeUnknowns([...new Set(unknown)],stores);}
-      catch{for(const n of unknown) learned[n]={stores:[],category:"Unsorted"};flash("Parser unreachable \u2014 assign new items below");}
-      setParsing(false);}
+    if(unknown.length){
+      setParsing(true);
+      try{ learned=await routeUnknowns([...new Set(unknown)],stores); }
+      catch{ learned={}; flash("Couldn't reach the parser \u2014 pick a store"); }
+      setParsing(false);
+    }
     const merged={...dict,...learned};
     const existing=new Set(list.map(i=>i.key));
-    const b=writeBatch(db); const reviewed=[];
-    for(const [k,v] of Object.entries(learned)) b.set(doc(db,"shoppinglist_dictionary",slug(k)),{name:k,...v});
+    const toAdd=[], needAssign=[];
     for(const n of names){
-      const meta=lookup(merged,n)||learned[n]; if(!meta||existing.has(n)) continue; existing.add(n);
-      b.set(doc(collection(db,"shoppinglist_list")),{key:n,name:n,stores:[...(meta.stores||[])],category:meta.category||"Unsorted",checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
-      if(learned[n]) reviewed.push(n);
+      if(existing.has(n)) continue; existing.add(n);
+      const meta=lookup(merged,n)||learned[n]||{stores:[],category:"Unsorted"};
+      if((meta.stores||[]).length) toAdd.push({name:n,stores:meta.stores,category:meta.category||"Unsorted"});
+      else needAssign.push({name:n,stores:[],category:meta.category||"Unsorted"});
     }
-    await b.commit(); setReview(reviewed); setDraft(""); setShowAdd(false);
+    if(toAdd.length){
+      await run("additems", async ()=>{
+        const b=writeBatch(db);
+        for(const it of toAdd){
+          b.set(doc(db,"shoppinglist_dictionary",slug(it.name)),{name:it.name,stores:it.stores,category:it.category});
+          b.set(doc(collection(db,"shoppinglist_list")),{key:it.name,name:it.name,stores:[...it.stores],category:it.category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+        }
+        await b.commit();
+      });
+      flash(toAdd.length===1 ? `"${toAdd[0].name}" added to ${toAdd[0].category}` : `${toAdd.length} items added`);
+    }
+    setDraft(""); setShowAdd(false);
+    if(needAssign.length) setAssignList(needAssign);
+  }
+  const updateAssign=(idx,patch)=>setAssignList(a=>a.map((x,i)=>i===idx?{...x,...patch}:x));
+  const toggleAssignStore=(idx,sid)=>setAssignList(a=>a.map((x,i)=>i===idx?{...x,stores:x.stores.includes(sid)?x.stores.filter(y=>y!==sid):[...x.stores,sid]}:x));
+  async function commitAssign(){
+    const items=assignList; if(!items.length){ setAssignList([]); return; }
+    await run("assign", async ()=>{
+      const b=writeBatch(db);
+      for(const it of items){
+        const st=it.stores||[];
+        b.set(doc(db,"shoppinglist_dictionary",slug(it.name)),{name:it.name,stores:st,category:it.category||"Unsorted"});
+        b.set(doc(collection(db,"shoppinglist_list")),{key:it.name,name:it.name,stores:[...st],category:it.category||"Unsorted",checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+      }
+      await b.commit();
+    });
+    flash(items.length===1 ? `"${items[0].name}" added to ${items[0].category}` : `${items.length} items added`);
+    setAssignList([]);
   }
   async function toggleReviewStore(key,sid){
     const cur=dict[key]||{stores:[],category:"Unsorted"};
@@ -593,6 +628,26 @@ function App(){
             <button class="rowx" onClick=${e=>{e.stopPropagation();toggleStaple(s.name,s.stores,s.category);}}>${isBusy("star_"+s.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
           </div>`;})}
         <button class="primary" disabled=${isBusy("addstaples")||!Object.values(stapleSel).some(Boolean)} onClick=${addStaplesToList}>${isBusy("addstaples")?html`<${Spin}/>Adding\u2026`:"Add selected to list"}</button>
+      </div>`:null}
+
+    <!-- assign store for items the parser couldn't route -->
+    ${assignList.length>0?html`
+      <div class="scrim" onClick=${commitAssign}></div>
+      <div class="sheet tall">
+        <div class="lead">Which store${assignList.length>1?"s":""}?</div>
+        <div class="hint">Couldn't auto-detect where to buy ${assignList.length>1?"these":"this"}. Pick a store (and category) \u2014 I'll remember for next time.</div>
+        ${assignList.map((it,idx)=>html`
+          <div class="arow">
+            <div class="aname">${it.name}</div>
+            <select class="sel sm" value=${it.category} onChange=${e=>updateAssign(idx,{category:e.target.value})}>
+              ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
+            </select>
+            <div class="chiprow">
+              ${stores.map(s=>html`<button class=${"chip mini"+(it.stores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleAssignStore(idx,s.id)}>
+                <span class="sq" style=${"background:"+s.color}></span>${s.name}</button>`)}
+            </div>
+          </div>`)}
+        <button class="primary" disabled=${isBusy("assign")} onClick=${commitAssign}>${isBusy("assign")?html`<${Spin}/>Adding\u2026`:"Add to list"}</button>
       </div>`:null}
 
     <!-- return date -->
