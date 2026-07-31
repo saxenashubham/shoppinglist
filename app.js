@@ -134,7 +134,12 @@ function App(){
   const [editStores,setEditStores]=useState([]);
   const [editTags,setEditTags]=useState([]);
   const [tagDraft,setTagDraft]=useState("");
-  const [tagFilter,setTagFilter]=useState(null);
+  const [exclTags,setExclTags]=useState(()=>new Set());
+  const [exclStores,setExclStores]=useState(()=>new Set());
+  const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
+  const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
+  const [storeSearch,setStoreSearch]=useState("");
+  const [tagSearch,setTagSearch]=useState("");
   const [retModal,setRetModal]=useState(null);
   const [retDate,setRetDate]=useState("");
   const [retFile,setRetFile]=useState(null);
@@ -412,7 +417,14 @@ function App(){
     });
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
-  const listGroups=useMemo(()=>groupByCat(tagFilter?list.filter(i=>(i.tags||[]).includes(tagFilter)):list,"list"),[list,collapsed,cats,tagFilter]);
+  const listGroups=useMemo(()=>{
+    const l=list.filter(i=>{
+      const sp=(i.stores||[]).length===0 || (i.stores||[]).some(s=>!exclStores.has(s));
+      const tp=(i.tags||[]).length===0 || (i.tags||[]).some(t=>!exclTags.has(t));
+      return sp && tp;
+    });
+    return groupByCat(l,"list");
+  },[list,collapsed,cats,exclTags,exclStores]);
   const shopItems=useMemo(()=>list.filter(i=>i.stores.includes(checkedIn)),[list,checkedIn]);
   const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+checkedIn),[shopItems,collapsed,checkedIn,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
@@ -462,12 +474,40 @@ function App(){
       <div class="pagehead">
         <button class="primary sm" style="flex:1" onClick=${()=>setShowAdd(true)}>+ Add items</button>
       </div>
-      ${allTags.length>0?html`
-        <div class="tagbar">
-          <button class=${"tagchip"+(tagFilter===null?" on":"")} onClick=${()=>setTagFilter(null)}>All</button>
-          ${allTags.map(t=>html`<button class=${"tagchip"+(tagFilter===t?" on":"")} onClick=${()=>setTagFilter(tagFilter===t?null:t)}>${t}</button>`)}
+      ${(stores.length>1||allTags.length>0)?html`
+        <div class="filterrow">
+          ${stores.length>1?html`
+            <div class="msel">
+              <button class=${"mselbtn"+(exclStores.size?" act":"")} onClick=${()=>setOpenFilter(openFilter==="store"?null:"store")}>
+                ${exclStores.size===0?"All stores":(stores.length-exclStores.size)+" store"+((stores.length-exclStores.size)===1?"":"s")}
+                <span class="caret">\u25be</span>
+              </button>
+              ${openFilter==="store"?html`
+                <div class="mselscrim" onClick=${()=>{setOpenFilter(null);setStoreSearch("");}}></div>
+                <div class="msellist">
+                  <input class="mselsearch" placeholder="Search stores\u2026" value=${storeSearch} onInput=${e=>setStoreSearch(e.target.value)} />
+                  <button class="mselopt" onClick=${()=>setExclStores(exclStores.size===0?new Set(stores.map(s=>s.id)):new Set())}><span class=${"ckbox"+(exclStores.size===0?" on":"")}></span>${exclStores.size===0?"Deselect all":"All stores"}</button>
+                  ${stores.filter(s=>s.name.toLowerCase().includes(storeSearch.trim().toLowerCase())).map(s=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclStores,s.id)}><span class=${"ckbox"+(!exclStores.has(s.id)?" on":"")}></span>${lsq(s.color,s.name)}${s.name}</button>`)}
+                </div>`:null}
+            </div>`:null}
+          ${allTags.length>0?html`
+            <div class="msel">
+              <button class=${"mselbtn"+(exclTags.size?" act":"")} onClick=${()=>setOpenFilter(openFilter==="tag"?null:"tag")}>
+                ${exclTags.size===0?"All tags":(allTags.length-exclTags.size)+" tag"+((allTags.length-exclTags.size)===1?"":"s")}
+                <span class="caret">\u25be</span>
+              </button>
+              ${openFilter==="tag"?html`
+                <div class="mselscrim" onClick=${()=>{setOpenFilter(null);setTagSearch("");}}></div>
+                <div class="msellist">
+                  <input class="mselsearch" placeholder="Search tags\u2026" value=${tagSearch} onInput=${e=>setTagSearch(e.target.value)} />
+                  <button class="mselopt" onClick=${()=>setExclTags(exclTags.size===0?new Set(allTags):new Set())}><span class=${"ckbox"+(exclTags.size===0?" on":"")}></span>${exclTags.size===0?"Deselect all":"All tags"}</button>
+                  ${allTags.filter(t=>t.toLowerCase().includes(tagSearch.trim().toLowerCase())).map(t=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclTags,t)}><span class=${"ckbox"+(!exclTags.has(t)?" on":"")}></span>${t}</button>`)}
+                </div>`:null}
+            </div>`:null}
         </div>`:null}
-      ${list.length===0
+      ${(exclTags.size||exclStores.size)&&listGroups.length===0
+        ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
+        : list.length===0
         ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Staples.</div>`
         : listGroups.map(g=>html`
           <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}>
