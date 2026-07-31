@@ -226,3 +226,5 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .storecard.addtile{background:#fff;border:1.5px dashed var(--line);align-items:center;justify-content:center;gap:2px;color:var(--muted)}
 .storecard.addtile:active{background:#f7f5ef;filter:none}
 .addplus{font-size:24px;font-weight:700;line-height:1;color:var(--green)}
+.lead-star{width:34px;flex:0 0 auto}
+.prow .pinfo{flex:1;min-width:0}

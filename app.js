@@ -458,13 +458,13 @@ function App(){
           <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}>
             ${g.items.map(it=>html`
               <div class="lrow">
+                <button class=${"rowstar lead-star"+(isStaple(it.name)?" on":"")} onClick=${()=>toggleStaple(it.name,it.stores,it.category)}>${isBusy("star_"+slug(it.name))?html`<${Spin} g=${true}/>`:(isStaple(it.name)?"\u2605":"\u2606")}</button>
                 <button class="lmain" onClick=${()=>openItem(it)}>
                   <span class="lname">${it.name}</span>
                   <span class="lstores">${it.stores.length
                     ? it.stores.map(s=>html`<i class="sq" style=${"background:"+scolor(s)} title=${sname(s)}></i>`)
                     : html`<em class="uns">unsorted</em>`}</span>
                 </button>
-                <button class=${"rowstar"+(isStaple(it.name)?" on":"")} onClick=${()=>toggleStaple(it.name,it.stores,it.category)}>${isBusy("star_"+slug(it.name))?html`<${Spin} g=${true}/>`:(isStaple(it.name)?"\u2605":"\u2606")}</button>
                 <button class="rowx" onClick=${()=>removeRow(it)}>${isBusy("rm_"+it.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
               </div>`)}
           <//>`)}`:null}
@@ -522,13 +522,13 @@ function App(){
             const rk="ret_"+p.id, kk="keep_"+p.id;
             return html`
             <div class=${"prow"+(ret?(d<0?" over":d<=5?" due":""):"")}>
+              <button class=${"rowstar lead-star"+(isStaple(p.name)?" on":"")} onClick=${()=>toggleStaple(p.name,(dict[p.name]&&dict[p.name].stores)||[p.store],(dict[p.name]&&dict[p.name].category)||"Unsorted")}>${isStaple(p.name)?"\u2605":"\u2606"}</button>
               <div class="pinfo">
                 <span class="pname">${p.name}</span>
                 <span class="pmeta"><i class="sq" style=${"background:"+scolor(p.store)}></i>${sname(p.store)} \u00b7 ${p.date}
                   ${ret?html`\u00b7 <b>${d<0?"overdue":"return in "+d+"d"}</b>`:null}</span>
               </div>
               <div class="pact">
-                <button class=${"rowstar"+(isStaple(p.name)?" on":"")} onClick=${()=>toggleStaple(p.name,(dict[p.name]&&dict[p.name].stores)||[p.store],(dict[p.name]&&dict[p.name].category)||"Unsorted")}>${isStaple(p.name)?"\u2605":"\u2606"}</button>
                 ${(!ret && p.status!=="returned" && p.status!=="kept")?html`<button class="ghost" onClick=${()=>{setRetModal(p);setRetDate("");setRetFile(null);}}>Return</button>`:null}
                 ${ret?html`
                   ${p.attachUrl?html`<button class="ghost" onClick=${()=>openAttachment(p)}>View</button>`
