@@ -149,6 +149,11 @@ function App(){
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
+  const scolor2=id=>(stores.find(s=>s.id===id)||{}).color2;
+  const grad=(c1,c2)=>c2?`linear-gradient(135deg, ${c1}, ${c2})`:c1;
+  const sbg=id=>grad(scolor(id),scolor2(id));
+  function tintHex(hex,f){ if(!hex||hex[0]!=="#") return hex||"#ccc"; let h=hex.slice(1); if(h.length===3) h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); const m=v=>Math.round(v+(255-v)*f); return `rgb(${m(r)},${m(g)},${m(b)})`; }
+  const tileBg=s=> s.color2?`linear-gradient(135deg, ${tintHex(s.color,.72)}, ${tintHex(s.color2,.72)})`:`color-mix(in srgb, ${s.color} 32%, #fff)`;
   const sname=id=>(stores.find(s=>s.id===id)||{}).name||id;
   const toggleCat=key=>setCollapsed(c=>({...c,[key]:!c[key]}));
   const isBusy=k=>!!busy[k];
@@ -279,16 +284,17 @@ function App(){
   // ---- stores: add / rename / recolor / delete ----
   function openStores(){ setStoreDraft(stores.map(s=>({...s}))); setStoreModal(true); }
   const editDraft=(id,patch)=>setStoreDraft(d=>d.map(s=>s.id===id?{...s,...patch}:s));
+  const serStore=s=>({id:s.id,name:(s.name||"").trim()||s.id,color:s.color,...(s.color2?{color2:s.color2}:{})});
   async function saveStores(){
-    await run("savestores", ()=>setDoc(cfgDoc(),{stores:storeDraft.map(s=>({id:s.id,name:s.name.trim()||s.id,color:s.color}))},{merge:true}));
+    await run("savestores", ()=>setDoc(cfgDoc(),{stores:storeDraft.map(serStore)},{merge:true}));
     flash("Stores updated");
   }
   async function addStore(){
     const nm=newStore.name.trim(); if(!nm) return;
     const id=slug(nm); if(storeDraft.some(s=>s.id===id)||stores.some(s=>s.id===id)){flash("Store already exists");return;}
-    const next=[...storeDraft,{id,name:nm,color:newStore.color}];
+    const next=[...storeDraft,{id,name:nm,color:newStore.color,...(newStore.color2?{color2:newStore.color2}:{})}];
     setStoreDraft(next);
-    await run("addstore", ()=>setDoc(cfgDoc(),{stores:next.map(s=>({id:s.id,name:s.name,color:s.color}))},{merge:true}));
+    await run("addstore", ()=>setDoc(cfgDoc(),{stores:next.map(serStore)},{merge:true}));
     setNewStore({name:"",color:STORE_SWATCHES[3]}); flash(nm+" added");
   }
   function orphansOf(sid){ return list.filter(i=>i.stores.includes(sid) && i.stores.filter(x=>x!==sid).length===0); }
@@ -300,7 +306,7 @@ function App(){
   async function commitDelete(s, assign){
     await run("delstore_"+s.id, async ()=>{
       const b=writeBatch(db);
-      b.set(cfgDoc(),{stores:storeDraft.filter(x=>x.id!==s.id).map(x=>({id:x.id,name:x.name,color:x.color}))},{merge:true});
+      b.set(cfgDoc(),{stores:storeDraft.filter(x=>x.id!==s.id).map(serStore)},{merge:true});
       list.filter(i=>i.stores.includes(s.id)).forEach(i=>{
         let ns=i.stores.filter(x=>x!==s.id);
         if(ns.length===0 && assign[i.id]) ns=[assign[i.id]];
@@ -462,7 +468,7 @@ function App(){
                 <button class="lmain" onClick=${()=>openItem(it)}>
                   <span class="lname">${it.name}</span>
                   <span class="lstores">${it.stores.length
-                    ? it.stores.map(s=>html`<i class="sq" style=${"background:"+scolor(s)} title=${sname(s)}></i>`)
+                    ? it.stores.map(s=>html`<i class="sq" style=${"background:"+sbg(s)} title=${sname(s)}></i>`)
                     : html`<em class="uns">unsorted</em>`}</span>
                 </button>
                 <button class="rowx" onClick=${()=>removeRow(it)}>${isBusy("rm_"+it.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
@@ -473,7 +479,7 @@ function App(){
       <div class="pickhead">Which store are you at?</div>
       <div class="picker">
         ${stores.map(s=>{const n=list.filter(i=>i.stores.includes(s.id)&&!i.checked).length;
-          return html`<button class="storecard" style=${"--sc:"+s.color} onClick=${()=>setCheckedIn(s.id)}>
+          return html`<button class="storecard" style=${"--sc:"+s.color+";background:"+tileBg(s)+";border-color:"+tintHex(s.color,.42)} onClick=${()=>setCheckedIn(s.id)}>
             <span class="scname">${s.name}</span>
             <span class="sccount">${n} item${n===1?"":"s"}</span>
           </button>`;})}
@@ -481,7 +487,7 @@ function App(){
       </div>`
     : html`
       <div class="checkin" style=${"--sc:"+scolor(checkedIn)}>
-        <span class="cistore"><span class="scdot" style=${"background:"+scolor(checkedIn)}></span>At ${sname(checkedIn)}</span>
+        <span class="cistore"><span class="scdot" style=${"background:"+sbg(checkedIn)}></span>At ${sname(checkedIn)}</span>
         <button class="ghost ciout" onClick=${checkOut}>Check out</button>
       </div>
       ${shopGroups.length===0
@@ -494,7 +500,7 @@ function App(){
                 <div class=${"item"+(it.checked?" done":"")} style=${"--sc:"+scolor(checkedIn)} onClick=${()=>toggle(it)}>
                   <div class="box">${check}</div>
                   <div class="label">${it.name}
-                    ${it.stores.length>1?html`<div class="also">${it.stores.filter(x=>x!==checkedIn).map(x=>html`<i style=${"background:"+scolor(x)}></i>`)}</div>`:null}
+                    ${it.stores.length>1?html`<div class="also">${it.stores.filter(x=>x!==checkedIn).map(x=>html`<i style=${"background:"+sbg(x)}></i>`)}</div>`:null}
                   </div>
                 </div>`)}
             <//>`;})}` ):null}
@@ -525,7 +531,7 @@ function App(){
               <button class=${"rowstar lead-star"+(isStaple(p.name)?" on":"")} onClick=${()=>toggleStaple(p.name,(dict[p.name]&&dict[p.name].stores)||[p.store],(dict[p.name]&&dict[p.name].category)||"Unsorted")}>${isStaple(p.name)?"\u2605":"\u2606"}</button>
               <div class="pinfo">
                 <span class="pname">${p.name}</span>
-                <span class="pmeta"><i class="sq" style=${"background:"+scolor(p.store)}></i>${sname(p.store)} \u00b7 ${p.date}
+                <span class="pmeta"><i class="sq" style=${"background:"+sbg(p.store)}></i>${sname(p.store)} \u00b7 ${p.date}
                   ${ret?html`\u00b7 <b>${d<0?"overdue":"return in "+d+"d"}</b>`:null}</span>
               </div>
               <div class="pact">
@@ -544,7 +550,7 @@ function App(){
     ${showAdd?html`
       <div class="scrim" onClick=${()=>setShowAdd(false)}></div>
       <div class="sheet">
-        <div class="lead">Paste your voice list</div>
+        <div class="sheethead"><div class="lead">Paste your voice list</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Alexa, WhatsApp, Notes \u2014 one line or comma-separated. Basketly splits it and files each item to the right store.</div>
         <textarea placeholder=${"2 lbs onions\ncilantro\npaneer\nmilk\ntoor dal"} value=${draft} onInput=${e=>setDraft(e.target.value)}></textarea>
         <button class="primary" disabled=${parsing||!draft.trim()} onClick=${addItems}>${parsing?html`<${Spin}/>Routing\u2026`:"Add to list"}</button>
@@ -556,7 +562,7 @@ function App(){
         ${review.map(k=>{const meta=dict[k]||{stores:[],category:"Unsorted"};return html`
           <div class="rrow"><span class="rname">${k}</span><span class="rcat">${meta.category}</span>
             ${stores.map(s=>html`<button class=${"chip mini"+(meta.stores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleReviewStore(k,s.id)}>
-              <span class="sq" style=${"background:"+s.color}></span>${s.name}</button>`)}
+              <span class="sq" style=${"background:"+grad(s.color,s.color2)}></span>${s.name}</button>`)}
           </div>`;})}
         <button class="primary" onClick=${()=>setReview([])}>Done</button>
       </div>`:null}
@@ -572,7 +578,7 @@ function App(){
         </select>
         <div class="hint">Stores</div>
         <div class="chiprow">${stores.map(s=>html`<button class=${"chip mini"+(editStores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleEditStore(s.id)}>
-          <span class="sq" style=${"background:"+s.color}></span>${s.name}</button>`)}</div>
+          <span class="sq" style=${"background:"+grad(s.color,s.color2)}></span>${s.name}</button>`)}</div>
         <button class="primary" disabled=${isBusy("saveitem")} onClick=${saveItem}>${isBusy("saveitem")?html`<${Spin}/>Saving\u2026`:"Save (remembers for next time)"}</button>
         <button class="danger" disabled=${isBusy("removeitem")} onClick=${removeCurrentItem}>${isBusy("removeitem")?html`<${Spin} g=${true}/>`:"Remove from list"}</button>
       </div>`:null}
@@ -581,17 +587,26 @@ function App(){
     ${storeModal?html`
       <div class="scrim" onClick=${()=>setStoreModal(false)}></div>
       <div class="sheet tall">
-        <div class="lead">Stores</div>
+        <div class="sheethead"><div class="lead">Stores</div><button class="sheetx" onClick=${()=>setStoreModal(false)} aria-label="Close">\u00d7</button></div>
         ${storeDraft.map(s=>html`
           <div class="serow">
             <input class="tin flex" value=${s.name} onInput=${e=>editDraft(s.id,{name:e.target.value})} />
-            <div class="swatches sm">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(s.color===c?" on":"")} style=${"background:"+c} onClick=${()=>editDraft(s.id,{color:c})}></button>`)}</div>
+            <input class="colorin" type="color" value=${s.color} onInput=${e=>editDraft(s.id,{color:e.target.value})} />
+            ${s.color2!=null
+              ? html`<input class="colorin" type="color" value=${s.color2} onInput=${e=>editDraft(s.id,{color2:e.target.value})} /><button class="mini2" onClick=${()=>editDraft(s.id,{color2:null})}>solid</button>`
+              : html`<button class="mini2" onClick=${()=>editDraft(s.id,{color2:"#111111"})}>+2nd</button>`}
             <button class="rowx" disabled=${isBusy("delstore_"+s.id)} onClick=${()=>deleteStore(s)}>${isBusy("delstore_"+s.id)?html`<${Spin} g=${true}/>`:"\ud83d\uddd1"}</button>
           </div>`)}
         <button class="primary sm" disabled=${isBusy("savestores")} onClick=${saveStores}>${isBusy("savestores")?html`<${Spin}/>Saving\u2026`:"Save names & colors"}</button>
         <div class="lead" style="margin-top:10px">Add a store</div>
         <input class="tin" placeholder="Store name" value=${newStore.name} onInput=${e=>setNewStore(n=>({...n,name:e.target.value}))} />
-        <div class="swatches">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(newStore.color===c?" on":"")} style=${"background:"+c} onClick=${()=>setNewStore(n=>({...n,color:c}))}></button>`)}</div>
+        <div class="pickrow">
+          <div class="swatches">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(newStore.color===c?" on":"")} style=${"background:"+c} onClick=${()=>setNewStore(n=>({...n,color:c}))}></button>`)}</div>
+          <input class="colorin" type="color" value=${newStore.color} onInput=${e=>setNewStore(n=>({...n,color:e.target.value}))} />
+          ${newStore.color2!=null
+            ? html`<input class="colorin" type="color" value=${newStore.color2} onInput=${e=>setNewStore(n=>({...n,color2:e.target.value}))} /><button class="mini2" onClick=${()=>setNewStore(n=>{const m={...n};delete m.color2;return m;})}>solid</button>`
+            : html`<button class="mini2" onClick=${()=>setNewStore(n=>({...n,color2:"#111111"}))}>+2nd</button>`}
+        </div>
         <button class="primary" disabled=${!newStore.name.trim()||isBusy("addstore")} onClick=${addStore}>${isBusy("addstore")?html`<${Spin}/>Adding\u2026`:"Add store"}</button>
       </div>`:null}
 
@@ -607,7 +622,7 @@ function App(){
             <div class="chiprow">
               ${stores.filter(s=>s.id!==delStore.id).map(s=>html`
                 <button class=${"chip mini"+((reassign[it.id]===s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>setReassign(r=>({...r,[it.id]:r[it.id]===s.id?undefined:s.id}))}>
-                  <span class="sq" style=${"background:"+s.color}></span>${s.name}</button>`)}
+                  <span class="sq" style=${"background:"+grad(s.color,s.color2)}></span>${s.name}</button>`)}
             </div>
           </div>`)}
         <button class="danger" disabled=${isBusy("delstore_"+delStore.id)} onClick=${()=>commitDelete(delStore,reassign)}>${isBusy("delstore_"+delStore.id)?html`<${Spin} g=${true}/>`:"Delete store & apply"}</button>
@@ -654,7 +669,7 @@ function App(){
           return html`<div class=${"strow"+(onList?" off":"")} onClick=${()=>{ if(!onList) setStapleSel(v=>({...v,[s.id]:!v[s.id]})); }}>
             <div class=${"box sm"+((stapleSel[s.id]&&!onList)?" on":"")}>${(stapleSel[s.id]&&!onList)?check:null}</div>
             <span class="sname2">${s.name}</span>
-            <span class="lstores">${(s.stores||[]).map(x=>html`<i class="sq" style=${"background:"+scolor(x)}></i>`)}</span>
+            <span class="lstores">${(s.stores||[]).map(x=>html`<i class="sq" style=${"background:"+sbg(x)}></i>`)}</span>
             ${onList?html`<span class="tag">on list</span>`:null}
             <button class="rowx" onClick=${e=>{e.stopPropagation();toggleStaple(s.name,s.stores,s.category);}}>${isBusy("star_"+s.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
           </div>`;})}
@@ -675,7 +690,7 @@ function App(){
             </select>
             <div class="chiprow">
               ${stores.map(s=>html`<button class=${"chip mini"+(it.stores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleAssignStore(idx,s.id)}>
-                <span class="sq" style=${"background:"+s.color}></span>${s.name}</button>`)}
+                <span class="sq" style=${"background:"+grad(s.color,s.color2)}></span>${s.name}</button>`)}
             </div>
           </div>`)}
         <button class="primary" disabled=${isBusy("assign")} onClick=${commitAssign}>${isBusy("assign")?html`<${Spin}/>Adding\u2026`:"Add to list"}</button>
