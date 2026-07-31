@@ -262,3 +262,7 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .label .ltags{margin-top:4px}
 .item .label{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
 .item .label .also{max-width:none}
+/* keep lettered squares from being squashed inside flex-column label */
+.item .label .also{flex:0 0 auto}
+.lsq{flex:0 0 auto;min-width:18px}
+.lsq.tiny{min-width:14px}
