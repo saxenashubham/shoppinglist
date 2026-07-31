@@ -134,8 +134,9 @@ function App(){
   const [editStores,setEditStores]=useState([]);
   const [editTags,setEditTags]=useState([]);
   const [tagDraft,setTagDraft]=useState("");
-  const [tagFilter,setTagFilter]=useState(null);
-  const [listStoreFilter,setListStoreFilter]=useState(null);
+  const [exclTags,setExclTags]=useState(()=>new Set());
+  const [exclStores,setExclStores]=useState(()=>new Set());
+  const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
   const [retModal,setRetModal]=useState(null);
   const [retDate,setRetDate]=useState("");
   const [retFile,setRetFile]=useState(null);
@@ -414,11 +415,13 @@ function App(){
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
   const listGroups=useMemo(()=>{
-    let l=list;
-    if(tagFilter) l=l.filter(i=>(i.tags||[]).includes(tagFilter));
-    if(listStoreFilter) l=l.filter(i=>(i.stores||[]).includes(listStoreFilter));
+    const l=list.filter(i=>{
+      const sp=(i.stores||[]).length===0 || (i.stores||[]).some(s=>!exclStores.has(s));
+      const tp=(i.tags||[]).length===0 || (i.tags||[]).some(t=>!exclTags.has(t));
+      return sp && tp;
+    });
     return groupByCat(l,"list");
-  },[list,collapsed,cats,tagFilter,listStoreFilter]);
+  },[list,collapsed,cats,exclTags,exclStores]);
   const shopItems=useMemo(()=>list.filter(i=>i.stores.includes(checkedIn)),[list,checkedIn]);
   const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+checkedIn),[shopItems,collapsed,checkedIn,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
@@ -470,16 +473,16 @@ function App(){
       </div>
       ${stores.length>1?html`
         <div class="tagbar">
-          <button class=${"tagchip"+(listStoreFilter===null?" on":"")} onClick=${()=>setListStoreFilter(null)}>All stores</button>
-          ${stores.map(s=>html`<button class=${"tagchip storefchip"+(listStoreFilter===s.id?" on":"")} onClick=${()=>setListStoreFilter(listStoreFilter===s.id?null:s.id)}>${lsq(s.color,s.name)}${s.name}</button>`)}
+          <button class=${"tagchip"+(exclStores.size===0?" on":"")} onClick=${()=>setExclStores(new Set())}>All stores</button>
+          ${stores.map(s=>html`<button class=${"tagchip storefchip"+(!exclStores.has(s.id)?" on":"")} onClick=${()=>toggleExcl(setExclStores,s.id)}>${lsq(s.color,s.name)}${s.name}</button>`)}
         </div>`:null}
       ${allTags.length>0?html`
         <div class="tagbar">
-          <button class=${"tagchip"+(tagFilter===null?" on":"")} onClick=${()=>setTagFilter(null)}>All</button>
-          ${allTags.map(t=>html`<button class=${"tagchip"+(tagFilter===t?" on":"")} onClick=${()=>setTagFilter(tagFilter===t?null:t)}>${t}</button>`)}
+          <button class=${"tagchip"+(exclTags.size===0?" on":"")} onClick=${()=>setExclTags(new Set())}>All tags</button>
+          ${allTags.map(t=>html`<button class=${"tagchip"+(!exclTags.has(t)?" on":"")} onClick=${()=>toggleExcl(setExclTags,t)}>${t}</button>`)}
         </div>`:null}
-      ${(listStoreFilter||tagFilter)&&listGroups.length===0
-        ? html`<div class="empty"><div class="big">Nothing matches</div>No items for this filter \u2014 clear it above.</div>`
+      ${(exclTags.size||exclStores.size)&&listGroups.length===0
+        ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 tap \u201cAll\u201d to reset.</div>`
         : list.length===0
         ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Staples.</div>`
         : listGroups.map(g=>html`
