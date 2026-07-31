@@ -70,7 +70,6 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .box svg{width:15px;height:15px;opacity:0;transform:scale(.6);transition:opacity .12s,transform .12s}
 .label{font-size:16px;font-weight:500;line-height:1.25;flex:1}
 .also{display:flex;gap:4px;margin-top:3px}
-.also i{width:7px;height:7px;border-radius:2px;display:block}
 .item.done .box{background:var(--sc);border-color:var(--sc)}
 .item.done .box svg{opacity:1;transform:scale(1)}
 .item.done .label{color:var(--muted);text-decoration:line-through;text-decoration-color:#bcc7bf}
