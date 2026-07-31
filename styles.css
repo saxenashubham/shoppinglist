@@ -265,3 +265,8 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .item .label .also{flex:0 0 auto}
 .lsq{flex:0 0 auto;min-width:18px}
 .lsq.tiny{min-width:14px}
+/* shop row: name + tags inline, store squares pushed right */
+.item{align-items:center}
+.item .label{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:3px 8px;flex:1;min-width:0}
+.item .label .ltags{margin-top:0}
+.item .also{margin-left:8px;align-self:center;flex:0 0 auto;max-width:none}
