@@ -138,6 +138,7 @@ function App(){
   const [exclStores,setExclStores]=useState(()=>new Set());
   const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
   const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
+  const [storeSearch,setStoreSearch]=useState("");
   const [retModal,setRetModal]=useState(null);
   const [retDate,setRetDate]=useState("");
   const [retFile,setRetFile]=useState(null);
@@ -481,10 +482,11 @@ function App(){
                 <span class="caret">\u25be</span>
               </button>
               ${openFilter==="store"?html`
-                <div class="mselscrim" onClick=${()=>setOpenFilter(null)}></div>
+                <div class="mselscrim" onClick=${()=>{setOpenFilter(null);setStoreSearch("");}}></div>
                 <div class="msellist">
-                  <button class="mselopt" onClick=${()=>setExclStores(new Set())}><span class=${"ckbox"+(exclStores.size===0?" on":"")}></span>All stores</button>
-                  ${stores.map(s=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclStores,s.id)}><span class=${"ckbox"+(!exclStores.has(s.id)?" on":"")}></span>${lsq(s.color,s.name)}${s.name}</button>`)}
+                  <input class="mselsearch" placeholder="Search stores\u2026" value=${storeSearch} onInput=${e=>setStoreSearch(e.target.value)} />
+                  <button class="mselopt" onClick=${()=>setExclStores(exclStores.size===0?new Set(stores.map(s=>s.id)):new Set())}><span class=${"ckbox"+(exclStores.size===0?" on":"")}></span>${exclStores.size===0?"Deselect all":"All stores"}</button>
+                  ${stores.filter(s=>s.name.toLowerCase().includes(storeSearch.trim().toLowerCase())).map(s=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclStores,s.id)}><span class=${"ckbox"+(!exclStores.has(s.id)?" on":"")}></span>${lsq(s.color,s.name)}${s.name}</button>`)}
                 </div>`:null}
             </div>`:null}
           ${allTags.length>0?html`
@@ -496,7 +498,7 @@ function App(){
               ${openFilter==="tag"?html`
                 <div class="mselscrim" onClick=${()=>setOpenFilter(null)}></div>
                 <div class="msellist">
-                  <button class="mselopt" onClick=${()=>setExclTags(new Set())}><span class=${"ckbox"+(exclTags.size===0?" on":"")}></span>All tags</button>
+                  <button class="mselopt" onClick=${()=>setExclTags(exclTags.size===0?new Set(allTags):new Set())}><span class=${"ckbox"+(exclTags.size===0?" on":"")}></span>${exclTags.size===0?"Deselect all":"All tags"}</button>
                   ${allTags.map(t=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclTags,t)}><span class=${"ckbox"+(!exclTags.has(t)?" on":"")}></span>${t}</button>`)}
                 </div>`:null}
             </div>`:null}

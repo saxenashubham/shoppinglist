@@ -284,3 +284,5 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .ckbox{width:19px;height:19px;border-radius:5px;border:2px solid #c3ccc5;flex:0 0 auto;position:relative}
 .ckbox.on{background:var(--green);border-color:var(--green)}
 .ckbox.on::after{content:"\2713";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800}
+.mselsearch{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font-family:var(--body);font-size:15px;color:var(--ink);margin-bottom:4px}
+.mselsearch:focus{outline:none;border-color:var(--green)}
