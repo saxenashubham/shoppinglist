@@ -260,3 +260,5 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .tagedit .tagchip{padding:5px 6px 5px 11px;display:inline-flex;align-items:center;gap:2px;border-color:var(--green);color:var(--green);background:var(--green-tint)}
 .tagx{color:inherit;font-size:16px;font-weight:700;padding:0 2px;line-height:1}
 .label .ltags{margin-top:4px}
+.item .label{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.item .label .also{max-width:none}

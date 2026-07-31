@@ -505,7 +505,7 @@ function App(){
       ${shopGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing left for ${sname(checkedIn)}</div>You're all done here \u2014 check out.</div>`
         : shopGroups.map(g=>{
-            const allDone=g.items.every(i=>i.checked); const open=allDone?false:g.open;
+            const open=g.open;
             return html`
             <${Panel} title=${g.cat} count=${g.items.filter(i=>!i.checked).length+"/"+g.items.length} color=${scolor(checkedIn)} open=${open} onToggle=${()=>toggleCat(g.key)}>
               ${g.items.map(it=>html`
