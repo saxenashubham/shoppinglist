@@ -271,3 +271,16 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .item .label .ltags{margin-top:0}
 .item .also{margin-left:8px;align-self:center;flex:0 0 auto;max-width:none}
 .storefchip{display:inline-flex;align-items:center;gap:6px;padding-left:8px}
+/* multi-select filter dropdowns */
+.filterrow{display:flex;gap:10px;margin-bottom:12px}
+.msel{position:relative;flex:1;min-width:0}
+.mselbtn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:10px 12px;border-radius:var(--sqr);border:1.5px solid var(--line);background:var(--card);font-size:14px;font-weight:600;color:var(--ink)}
+.mselbtn.act{border-color:var(--green);color:var(--green);background:var(--green-tint)}
+.mselbtn .caret{color:var(--muted);font-size:11px;flex:0 0 auto}
+.mselscrim{position:fixed;inset:0;z-index:14}
+.msellist{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:15;background:var(--card);border:1.5px solid var(--line);border-radius:var(--r);box-shadow:0 12px 30px -8px rgba(22,36,29,.28);padding:6px;max-height:300px;overflow-y:auto}
+.mselopt{width:100%;display:flex;align-items:center;gap:9px;padding:11px 8px;border-radius:8px;font-size:15px;font-weight:600;color:var(--ink);text-align:left}
+.mselopt:active{background:#f3f5f0}
+.ckbox{width:19px;height:19px;border-radius:5px;border:2px solid #c3ccc5;flex:0 0 auto;position:relative}
+.ckbox.on{background:var(--green);border-color:var(--green)}
+.ckbox.on::after{content:"\2713";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800}

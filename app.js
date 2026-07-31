@@ -137,6 +137,7 @@ function App(){
   const [exclTags,setExclTags]=useState(()=>new Set());
   const [exclStores,setExclStores]=useState(()=>new Set());
   const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
+  const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
   const [retModal,setRetModal]=useState(null);
   const [retDate,setRetDate]=useState("");
   const [retFile,setRetFile]=useState(null);
@@ -471,18 +472,37 @@ function App(){
       <div class="pagehead">
         <button class="primary sm" style="flex:1" onClick=${()=>setShowAdd(true)}>+ Add items</button>
       </div>
-      ${stores.length>1?html`
-        <div class="tagbar">
-          <button class=${"tagchip"+(exclStores.size===0?" on":"")} onClick=${()=>setExclStores(new Set())}>All stores</button>
-          ${stores.map(s=>html`<button class=${"tagchip storefchip"+(!exclStores.has(s.id)?" on":"")} onClick=${()=>toggleExcl(setExclStores,s.id)}>${lsq(s.color,s.name)}${s.name}</button>`)}
-        </div>`:null}
-      ${allTags.length>0?html`
-        <div class="tagbar">
-          <button class=${"tagchip"+(exclTags.size===0?" on":"")} onClick=${()=>setExclTags(new Set())}>All tags</button>
-          ${allTags.map(t=>html`<button class=${"tagchip"+(!exclTags.has(t)?" on":"")} onClick=${()=>toggleExcl(setExclTags,t)}>${t}</button>`)}
+      ${(stores.length>1||allTags.length>0)?html`
+        <div class="filterrow">
+          ${stores.length>1?html`
+            <div class="msel">
+              <button class=${"mselbtn"+(exclStores.size?" act":"")} onClick=${()=>setOpenFilter(openFilter==="store"?null:"store")}>
+                ${exclStores.size===0?"All stores":(stores.length-exclStores.size)+" store"+((stores.length-exclStores.size)===1?"":"s")}
+                <span class="caret">\u25be</span>
+              </button>
+              ${openFilter==="store"?html`
+                <div class="mselscrim" onClick=${()=>setOpenFilter(null)}></div>
+                <div class="msellist">
+                  <button class="mselopt" onClick=${()=>setExclStores(new Set())}><span class=${"ckbox"+(exclStores.size===0?" on":"")}></span>All stores</button>
+                  ${stores.map(s=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclStores,s.id)}><span class=${"ckbox"+(!exclStores.has(s.id)?" on":"")}></span>${lsq(s.color,s.name)}${s.name}</button>`)}
+                </div>`:null}
+            </div>`:null}
+          ${allTags.length>0?html`
+            <div class="msel">
+              <button class=${"mselbtn"+(exclTags.size?" act":"")} onClick=${()=>setOpenFilter(openFilter==="tag"?null:"tag")}>
+                ${exclTags.size===0?"All tags":(allTags.length-exclTags.size)+" tag"+((allTags.length-exclTags.size)===1?"":"s")}
+                <span class="caret">\u25be</span>
+              </button>
+              ${openFilter==="tag"?html`
+                <div class="mselscrim" onClick=${()=>setOpenFilter(null)}></div>
+                <div class="msellist">
+                  <button class="mselopt" onClick=${()=>setExclTags(new Set())}><span class=${"ckbox"+(exclTags.size===0?" on":"")}></span>All tags</button>
+                  ${allTags.map(t=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclTags,t)}><span class=${"ckbox"+(!exclTags.has(t)?" on":"")}></span>${t}</button>`)}
+                </div>`:null}
+            </div>`:null}
         </div>`:null}
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
-        ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 tap \u201cAll\u201d to reset.</div>`
+        ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
         : list.length===0
         ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Staples.</div>`
         : listGroups.map(g=>html`
