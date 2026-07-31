@@ -279,8 +279,9 @@ function App(){
   // ---- stores: add / rename / recolor / delete ----
   function openStores(){ setStoreDraft(stores.map(s=>({...s}))); setStoreModal(true); }
   const editDraft=(id,patch)=>setStoreDraft(d=>d.map(s=>s.id===id?{...s,...patch}:s));
+  const serStore=s=>({id:s.id,name:(s.name||"").trim()||s.id,color:s.color});
   async function saveStores(){
-    await run("savestores", ()=>setDoc(cfgDoc(),{stores:storeDraft.map(s=>({id:s.id,name:s.name.trim()||s.id,color:s.color}))},{merge:true}));
+    await run("savestores", ()=>setDoc(cfgDoc(),{stores:storeDraft.map(serStore)},{merge:true}));
     flash("Stores updated");
   }
   async function addStore(){
@@ -288,7 +289,7 @@ function App(){
     const id=slug(nm); if(storeDraft.some(s=>s.id===id)||stores.some(s=>s.id===id)){flash("Store already exists");return;}
     const next=[...storeDraft,{id,name:nm,color:newStore.color}];
     setStoreDraft(next);
-    await run("addstore", ()=>setDoc(cfgDoc(),{stores:next.map(s=>({id:s.id,name:s.name,color:s.color}))},{merge:true}));
+    await run("addstore", ()=>setDoc(cfgDoc(),{stores:next.map(serStore)},{merge:true}));
     setNewStore({name:"",color:STORE_SWATCHES[3]}); flash(nm+" added");
   }
   function orphansOf(sid){ return list.filter(i=>i.stores.includes(sid) && i.stores.filter(x=>x!==sid).length===0); }
@@ -300,7 +301,7 @@ function App(){
   async function commitDelete(s, assign){
     await run("delstore_"+s.id, async ()=>{
       const b=writeBatch(db);
-      b.set(cfgDoc(),{stores:storeDraft.filter(x=>x.id!==s.id).map(x=>({id:x.id,name:x.name,color:x.color}))},{merge:true});
+      b.set(cfgDoc(),{stores:storeDraft.filter(x=>x.id!==s.id).map(serStore)},{merge:true});
       list.filter(i=>i.stores.includes(s.id)).forEach(i=>{
         let ns=i.stores.filter(x=>x!==s.id);
         if(ns.length===0 && assign[i.id]) ns=[assign[i.id]];
@@ -544,7 +545,7 @@ function App(){
     ${showAdd?html`
       <div class="scrim" onClick=${()=>setShowAdd(false)}></div>
       <div class="sheet">
-        <div class="lead">Paste your voice list</div>
+        <div class="sheethead"><div class="lead">Paste your voice list</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Alexa, WhatsApp, Notes \u2014 one line or comma-separated. Basketly splits it and files each item to the right store.</div>
         <textarea placeholder=${"2 lbs onions\ncilantro\npaneer\nmilk\ntoor dal"} value=${draft} onInput=${e=>setDraft(e.target.value)}></textarea>
         <button class="primary" disabled=${parsing||!draft.trim()} onClick=${addItems}>${parsing?html`<${Spin}/>Routing\u2026`:"Add to list"}</button>
@@ -581,17 +582,20 @@ function App(){
     ${storeModal?html`
       <div class="scrim" onClick=${()=>setStoreModal(false)}></div>
       <div class="sheet tall">
-        <div class="lead">Stores</div>
+        <div class="sheethead"><div class="lead">Stores</div><button class="sheetx" onClick=${()=>setStoreModal(false)} aria-label="Close">\u00d7</button></div>
         ${storeDraft.map(s=>html`
           <div class="serow">
             <input class="tin flex" value=${s.name} onInput=${e=>editDraft(s.id,{name:e.target.value})} />
-            <div class="swatches sm">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(s.color===c?" on":"")} style=${"background:"+c} onClick=${()=>editDraft(s.id,{color:c})}></button>`)}</div>
+            <input class="colorin" type="color" value=${s.color} onInput=${e=>editDraft(s.id,{color:e.target.value})} />
             <button class="rowx" disabled=${isBusy("delstore_"+s.id)} onClick=${()=>deleteStore(s)}>${isBusy("delstore_"+s.id)?html`<${Spin} g=${true}/>`:"\ud83d\uddd1"}</button>
           </div>`)}
         <button class="primary sm" disabled=${isBusy("savestores")} onClick=${saveStores}>${isBusy("savestores")?html`<${Spin}/>Saving\u2026`:"Save names & colors"}</button>
         <div class="lead" style="margin-top:10px">Add a store</div>
         <input class="tin" placeholder="Store name" value=${newStore.name} onInput=${e=>setNewStore(n=>({...n,name:e.target.value}))} />
-        <div class="swatches">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(newStore.color===c?" on":"")} style=${"background:"+c} onClick=${()=>setNewStore(n=>({...n,color:c}))}></button>`)}</div>
+        <div class="pickrow">
+          <div class="swatches">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(newStore.color===c?" on":"")} style=${"background:"+c} onClick=${()=>setNewStore(n=>({...n,color:c}))}></button>`)}</div>
+          <input class="colorin" type="color" value=${newStore.color} onInput=${e=>setNewStore(n=>({...n,color:e.target.value}))} />
+        </div>
         <button class="primary" disabled=${!newStore.name.trim()||isBusy("addstore")} onClick=${addStore}>${isBusy("addstore")?html`<${Spin}/>Adding\u2026`:"Add store"}</button>
       </div>`:null}
 
