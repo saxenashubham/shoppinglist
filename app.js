@@ -139,6 +139,7 @@ function App(){
   const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
   const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
   const [storeSearch,setStoreSearch]=useState("");
+  const [tagSearch,setTagSearch]=useState("");
   const [retModal,setRetModal]=useState(null);
   const [retDate,setRetDate]=useState("");
   const [retFile,setRetFile]=useState(null);
@@ -496,10 +497,11 @@ function App(){
                 <span class="caret">\u25be</span>
               </button>
               ${openFilter==="tag"?html`
-                <div class="mselscrim" onClick=${()=>setOpenFilter(null)}></div>
+                <div class="mselscrim" onClick=${()=>{setOpenFilter(null);setTagSearch("");}}></div>
                 <div class="msellist">
+                  <input class="mselsearch" placeholder="Search tags\u2026" value=${tagSearch} onInput=${e=>setTagSearch(e.target.value)} />
                   <button class="mselopt" onClick=${()=>setExclTags(exclTags.size===0?new Set(allTags):new Set())}><span class=${"ckbox"+(exclTags.size===0?" on":"")}></span>${exclTags.size===0?"Deselect all":"All tags"}</button>
-                  ${allTags.map(t=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclTags,t)}><span class=${"ckbox"+(!exclTags.has(t)?" on":"")}></span>${t}</button>`)}
+                  ${allTags.filter(t=>t.toLowerCase().includes(tagSearch.trim().toLowerCase())).map(t=>html`<button class="mselopt" onClick=${()=>toggleExcl(setExclTags,t)}><span class=${"ckbox"+(!exclTags.has(t)?" on":"")}></span>${t}</button>`)}
                 </div>`:null}
             </div>`:null}
         </div>`:null}
