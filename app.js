@@ -135,6 +135,7 @@ function App(){
   const [editTags,setEditTags]=useState([]);
   const [tagDraft,setTagDraft]=useState("");
   const [tagFilter,setTagFilter]=useState(null);
+  const [listStoreFilter,setListStoreFilter]=useState(null);
   const [retModal,setRetModal]=useState(null);
   const [retDate,setRetDate]=useState("");
   const [retFile,setRetFile]=useState(null);
@@ -412,7 +413,12 @@ function App(){
     });
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
-  const listGroups=useMemo(()=>groupByCat(tagFilter?list.filter(i=>(i.tags||[]).includes(tagFilter)):list,"list"),[list,collapsed,cats,tagFilter]);
+  const listGroups=useMemo(()=>{
+    let l=list;
+    if(tagFilter) l=l.filter(i=>(i.tags||[]).includes(tagFilter));
+    if(listStoreFilter) l=l.filter(i=>(i.stores||[]).includes(listStoreFilter));
+    return groupByCat(l,"list");
+  },[list,collapsed,cats,tagFilter,listStoreFilter]);
   const shopItems=useMemo(()=>list.filter(i=>i.stores.includes(checkedIn)),[list,checkedIn]);
   const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+checkedIn),[shopItems,collapsed,checkedIn,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
@@ -462,12 +468,19 @@ function App(){
       <div class="pagehead">
         <button class="primary sm" style="flex:1" onClick=${()=>setShowAdd(true)}>+ Add items</button>
       </div>
+      ${stores.length>1?html`
+        <div class="tagbar">
+          <button class=${"tagchip"+(listStoreFilter===null?" on":"")} onClick=${()=>setListStoreFilter(null)}>All stores</button>
+          ${stores.map(s=>html`<button class=${"tagchip storefchip"+(listStoreFilter===s.id?" on":"")} onClick=${()=>setListStoreFilter(listStoreFilter===s.id?null:s.id)}>${lsq(s.color,s.name)}${s.name}</button>`)}
+        </div>`:null}
       ${allTags.length>0?html`
         <div class="tagbar">
           <button class=${"tagchip"+(tagFilter===null?" on":"")} onClick=${()=>setTagFilter(null)}>All</button>
           ${allTags.map(t=>html`<button class=${"tagchip"+(tagFilter===t?" on":"")} onClick=${()=>setTagFilter(tagFilter===t?null:t)}>${t}</button>`)}
         </div>`:null}
-      ${list.length===0
+      ${(listStoreFilter||tagFilter)&&listGroups.length===0
+        ? html`<div class="empty"><div class="big">Nothing matches</div>No items for this filter \u2014 clear it above.</div>`
+        : list.length===0
         ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Staples.</div>`
         : listGroups.map(g=>html`
           <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}>

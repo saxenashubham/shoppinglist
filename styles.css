@@ -270,3 +270,4 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .item .label{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:3px 8px;flex:1;min-width:0}
 .item .label .ltags{margin-top:0}
 .item .also{margin-left:8px;align-self:center;flex:0 0 auto;max-width:none}
+.storefchip{display:inline-flex;align-items:center;gap:6px;padding-left:8px}
