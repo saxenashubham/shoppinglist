@@ -513,7 +513,7 @@ function App(){
                   <div class="box">${check}</div>
                   <div class="label">${it.name}
                     ${(it.tags&&it.tags.length)?html`<span class="ltags">${it.tags.map(t=>html`<span class="ltag">${t}</span>`)}</span>`:null}
-                    ${it.stores.length>1?html`<div class="also">${it.stores.filter(x=>x!==checkedIn).map(x=>lsq(scolor(x),sname(x),"tiny"))}</div>`:null}
+                    ${it.stores.length>1?html`<div class="also">${it.stores.filter(x=>x!==checkedIn).map(x=>lsq(scolor(x),sname(x)))}</div>`:null}
                   </div>
                 </div>`)}
             <//>`;})}` ):null}
