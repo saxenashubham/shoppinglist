@@ -505,6 +505,10 @@ function App(){
                 </div>`:null}
             </div>`:null}
         </div>`:null}
+      ${list.length>0?html`
+        <div class="listcount">${(exclTags.size||exclStores.size)
+          ? html`${listGroups.reduce((a,g)=>a+g.items.length,0)} <span class="lcmuted">of ${list.length} items</span>`
+          : html`${list.length} item${list.length===1?"":"s"}`}</div>`:null}
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
         : list.length===0
