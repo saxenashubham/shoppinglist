@@ -18,6 +18,9 @@ const html = htm.bind(h);
 function textOn(hex){ if(!hex||hex[0]!=="#") return "#161d18"; let h=hex.slice(1); if(h.length===3)h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); const L=(0.299*r+0.587*g+0.114*b)/255; return L>0.62?"#161d18":"#fff"; }
 const sqChar=n=>(((n||"?").trim()[0])||"?").toUpperCase();
 const lsq=(color,name,cls)=>html`<i class=${"lsq"+(cls?" "+cls:"")} style=${"background:"+(color||"#ccc")+";color:"+textOn(color)}>${sqChar(name)}</i>`;
+const WHO=[["baby","Baby"],["kids","Kids"],["adults","Adults"],["family","Whole family"]];
+const AGES=[["u6","Under 6 mo"],["6_9","6-9 mo"],["9_12","9-12 mo"],["12_18","12-18 mo"],["18_36","18-36 mo"]];
+const FLAVORS=["Sweet","Savory","Spicy","Mild"];
 
 const appFb = initializeApp(shoppingListConfig);
 const auth = getAuth(appFb);
@@ -137,6 +140,23 @@ function App(){
   const [exclTags,setExclTags]=useState(()=>new Set());
   const [exclStores,setExclStores]=useState(()=>new Set());
   const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
+  const toggleFlavor=f=>setRFlavors(prev=>{const n=new Set(prev); n.has(f)?n.delete(f):n.add(f); return n;});
+  async function getRecipes(){
+    const ingredients=rIng.trim(); if(!ingredients) return;
+    if(rWho==="baby"&&!rAge) return;
+    setRLoading(true); setRErr(""); setRResults(null);
+    try{
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),30000);
+      const res=await fetch(WORKER_URL+"/recipes",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ingredients,forWhom:rWho,ageBand:rWho==="baby"?rAge:null,flavors:[...rFlavors],allowOneExtra:true}),signal:ctrl.signal});
+      clearTimeout(t);
+      if(!res.ok) throw new Error("worker "+res.status);
+      const data=await res.json();
+      const arr=Array.isArray(data)?data:(data.dishes||[]);
+      setRResults(arr); setROpen(arr.length?{0:true}:{});
+    }catch(e){ setRErr("Couldn't get ideas \u2014 check your connection and try again."); }
+    setRLoading(false);
+  }
   const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
   const [storeSearch,setStoreSearch]=useState("");
   const [tagSearch,setTagSearch]=useState("");
@@ -157,6 +177,15 @@ function App(){
   const [stapleSel,setStapleSel]=useState({});
   const [newStaple,setNewStaple]=useState("");
   const [menu,setMenu]=useState(false);
+  const [recipeOpen,setRecipeOpen]=useState(false);
+  const [rWho,setRWho]=useState("family");
+  const [rAge,setRAge]=useState("");
+  const [rFlavors,setRFlavors]=useState(()=>new Set());
+  const [rIng,setRIng]=useState("");
+  const [rLoading,setRLoading]=useState(false);
+  const [rResults,setRResults]=useState(null);
+  const [rErr,setRErr]=useState("");
+  const [rOpen,setROpen]=useState({});
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
@@ -692,6 +721,7 @@ function App(){
       <div class="dropdown">
         <div class="ddemail">${user.email}</div>
         <button class="ddm" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>Staples</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);setRecipeOpen(true);}}>Recipe ideas</button>
         <button class="ddm" onClick=${()=>{setMenu(false);openStores();}}>Manage stores</button>
         <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage categories</button>
         <div class="ddsep"></div>
@@ -764,6 +794,47 @@ function App(){
           <input type="file" accept="image/*,application/pdf" onChange=${e=>setRetFile(e.target.files[0]||null)} />
         </label>
         <button class="primary" disabled=${!retDate||isBusy("confirmret")} onClick=${confirmReturn}>${isBusy("confirmret")?html`<${Spin}/>Saving\u2026`:"Mark for return"}</button>
+      </div>`:null}
+
+    <!-- recipe ideas -->
+    ${recipeOpen?html`
+      <div class="recipepage">
+        <div class="rphead">
+          <div class="rptitle">Recipe ideas</div>
+          <button class="sheetx" onClick=${()=>setRecipeOpen(false)} aria-label="Close">\u00d7</button>
+        </div>
+        <div class="rpbody">
+          <div class="hint">What do you have? List your ingredients and I'll suggest dishes you can make.</div>
+          <textarea class="tin ta" placeholder="e.g. banana, oats, milk, egg, apple, rice" value=${rIng} onInput=${e=>setRIng(e.target.value)}></textarea>
+          <div class="hint">Who's it for?</div>
+          <div class="chiprow">${WHO.map(([v,l])=>html`<button class=${"selchip"+(rWho===v?" on":"")} onClick=${()=>setRWho(v)}>${l}</button>`)}</div>
+          ${rWho==="baby"?html`
+            <div class="hint">Baby's age</div>
+            <div class="chiprow">${AGES.map(([v,l])=>html`<button class=${"selchip"+(rAge===v?" on":"")} onClick=${()=>setRAge(v)}>${l}</button>`)}</div>`:null}
+          <div class="hint">Flavor (optional)</div>
+          <div class="chiprow">${FLAVORS.map(f=>html`<button class=${"selchip"+(rFlavors.has(f)?" on":"")} onClick=${()=>toggleFlavor(f)}>${f}</button>`)}</div>
+          <button class="primary" disabled=${rLoading||!rIng.trim()||(rWho==="baby"&&!rAge)} onClick=${getRecipes}>${rLoading?html`<${Spin}/>Thinking\u2026`:"Get ideas"}</button>
+          ${rErr?html`<div class="rerr">${rErr}</div>`:null}
+          ${rResults?(rResults.length===0
+            ? html`<div class="empty"><div class="big">No ideas came back</div>Try adding a couple more ingredients.</div>`
+            : html`
+              ${rWho==="baby"?html`<div class="babycaveat">Ideas only \u2014 check textures for your baby's age, and avoid honey under 12 months, added salt/sugar, and choking hazards. If they keep refusing food, it's worth checking with your pediatrician.</div>`:null}
+              <div class="rlist">
+                ${rResults.map((d,i)=>html`
+                  <div class="panel">
+                    <button class="phead" onClick=${()=>setROpen(o=>({...o,[i]:!o[i]}))}>
+                      <span class="ptitle">${d.name}</span>
+                      <span class="pright">${d.minutes?html`<span class="pcount">${d.minutes} min</span>`:null}<span class=${"pcaret"+(rOpen[i]?" up":"")}>\u25be</span></span>
+                    </button>
+                    ${rOpen[i]?html`<div class="pbody rbody">
+                      ${(d.ingredientsUsed&&d.ingredientsUsed.length)?html`<div class="rsec"><h5>Uses</h5><p>${d.ingredientsUsed.join(", ")}</p></div>`:null}
+                      ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
+                      ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
+                      ${d.oneExtra?html`<div class="rsec rextra"><h5>With one more item</h5><p>${d.oneExtra}</p></div>`:null}
+                    </div>`:null}
+                  </div>`)}
+              </div>`):null}
+        </div>
       </div>`:null}
 
     <!-- image viewer -->
