@@ -313,3 +313,10 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .pcaret{color:var(--muted);font-size:12px;transition:transform .15s}
 .pcaret.up{transform:rotate(180deg)}
 .pright{display:flex;align-items:center;gap:8px}
+.ringlist:empty{display:none}
+.addrow{display:flex;gap:8px;align-items:center;margin-top:8px}
+.addrow .flex{flex:1}
+.assumed{margin-top:12px;font-size:13px;color:var(--muted);line-height:1.4}
+.linkbtn{color:var(--green);font-weight:700;text-decoration:underline}
+.needline{font-size:13px;font-weight:700;color:#9a5b12;background:#fff7ed;border-radius:8px;padding:7px 10px;margin-bottom:6px}
+.haveline{font-size:13px;font-weight:700;color:var(--green-deep);background:var(--green-tint);border-radius:8px;padding:7px 10px;margin-bottom:6px}

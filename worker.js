@@ -93,36 +93,46 @@ async function handleRecipes(req, env) {
   const forWhom = ["baby","kids","adults","family"].includes(b.forWhom) ? b.forWhom : "family";
   const ageBand = b.ageBand && AGE_LABEL[b.ageBand] ? AGE_LABEL[b.ageBand] : null;
   const flavors = Array.isArray(b.flavors) ? b.flavors.filter(f => typeof f === "string") : [];
+  const staples = Array.isArray(b.staples) ? b.staples.filter(s => typeof s === "string") : [];
+  const mealType = ["snack","meal","soft"].includes(b.mealType) ? b.mealType : "meal";
+  const cuisine = typeof b.cuisine === "string" && b.cuisine.trim() ? b.cuisine.trim() : null;
   const allowOneExtra = b.allowOneExtra !== false;
 
   const baby = forWhom === "baby";
+  const mealLabel = mealType === "snack" ? "a quick snack" : mealType === "soft" ? "something soft and easy on sore/teething gums" : "a meal";
   const system =
     `You are a practical home-cooking helper. The user gives ingredients they have on hand. ` +
-    `Suggest UP TO 5 realistic dishes they can make mostly from those ingredients. ` +
-    `Assume basic pantry staples (water, cooking oil, and — except for babies — a little salt and common spices) are available. ` +
-    `Prefer dishes that use several of the listed ingredients. ` +
+    `Suggest UP TO 5 realistic dishes they can make mostly from those ingredients. Aim for ${mealLabel}. ` +
+    (cuisine ? `Prefer ${cuisine} cuisine dishes. ` : "") +
+    (staples.length
+      ? `The household ALWAYS has these staples on hand (assume available, don't count them as "need"): ${staples.join(", ")}. `
+      : `Assume only water and cooking oil are always available. `) +
+    `Also assume basic cooking heat/utensils. Prefer dishes that use several of the listed ingredients. ` +
     (baby
       ? `THIS IS FOR A BABY (${ageBand || "age not given"}). Follow infant-feeding safety strictly: ` +
         `age-appropriate texture (smooth purees for the youngest, then mashed, then soft finger foods); ` +
-        `NO honey under 12 months; NO added salt or sugar; avoid choking hazards (whole nuts, whole grapes, hard raw chunks, globs of nut butter); ` +
+        `NO honey under 12 months (even if it's a staple); NO added salt or sugar; avoid choking hazards (whole nuts, whole grapes, hard raw chunks, globs of nut butter); ` +
         `keep recipes simple with few ingredients. If age is under 6 months, note solids usually have not started and keep suggestions minimal and cautious. ` +
         `Ignore any "spicy" request for a baby. In each dish's notes, include the suitable texture for this age. `
       : `Audience: ${forWhom}. `) +
     (flavors.length ? `Bias toward these flavors when sensible: ${flavors.join(", ")}. ` : "") +
     (allowOneExtra
-      ? `Each dish MAY include "oneExtra": a single common ingredient (not already listed) that would unlock or noticeably improve the dish. Keep it to one item, or null. `
-      : `Do not suggest extra ingredients; use only what is listed. Set oneExtra to null. `) +
-    `For each dish return: name, minutes (approx total prep+cook time as an integer), ingredientsUsed (array of the user's ingredients it uses), steps (array of short imperative steps), notes (one short helpful note), oneExtra (string or null). ` +
+      ? `Each dish MAY include "oneExtra": a single common ingredient (not already available) that would unlock or noticeably improve the dish, or null. `
+      : `Do not suggest extra ingredients; set oneExtra to null. `) +
+    `For each dish also compute "need": the array of ingredients the dish requires that are NOT among the user's listed ingredients and NOT among the household staples (empty array if they already have everything). ` +
+    `Return per dish: name, minutes (integer, approx total time), ingredientsUsed (array of the user's listed ingredients it uses), steps (array of short imperative steps), need (array), notes (one short helpful note), oneExtra (string or null). ` +
     `Respond with ONLY a JSON array, no prose, no markdown fences: ` +
-    `[{"name":"...","minutes":15,"ingredientsUsed":["..."],"steps":["...","..."],"notes":"...","oneExtra":null}]`;
+    `[{"name":"...","minutes":15,"ingredientsUsed":["..."],"need":[],"steps":["..."],"notes":"...","oneExtra":null}]`;
 
   const userText =
     `Ingredients on hand:\n${ingredients}\n\n` +
+    (staples.length ? `Always-available staples: ${staples.join(", ")}\n` : "") +
+    `Meal type: ${mealType}\n` + (cuisine ? `Cuisine: ${cuisine}\n` : "") +
     `For: ${forWhom}${baby && ageBand ? " (" + ageBand + ")" : ""}` +
     (flavors.length ? `\nFlavors: ${flavors.join(", ")}` : "");
 
   let clean;
-  try { clean = await callClaude(env, system, userText, 1600); }
+  try { clean = await callClaude(env, system, userText, 1800); }
   catch (e) { return json({ error: String(e.message || e) }, 502); }
 
   let arr;
@@ -132,6 +142,7 @@ async function handleRecipes(req, env) {
     name: String(d.name || "").trim(),
     minutes: Number.isFinite(+d.minutes) ? Math.round(+d.minutes) : null,
     ingredientsUsed: Array.isArray(d.ingredientsUsed) ? d.ingredientsUsed.map(String) : [],
+    need: Array.isArray(d.need) ? d.need.map(String) : [],
     steps: Array.isArray(d.steps) ? d.steps.map(String) : [],
     notes: d.notes ? String(d.notes) : "",
     oneExtra: allowOneExtra && d.oneExtra ? String(d.oneExtra) : null,

@@ -21,6 +21,8 @@ const lsq=(color,name,cls)=>html`<i class=${"lsq"+(cls?" "+cls:"")} style=${"bac
 const WHO=[["baby","Baby"],["kids","Kids"],["adults","Adults"],["family","Whole family"]];
 const AGES=[["u6","Under 6 mo"],["6_9","6-9 mo"],["9_12","9-12 mo"],["12_18","12-18 mo"],["18_36","18-36 mo"]];
 const FLAVORS=["Sweet","Savory","Spicy","Mild"];
+const MEALS=[["snack","Snack"],["meal","Meal"],["soft","Soft (sore gums)"]];
+const CUISINES=["Indian","Chinese","Thai","Italian","Mexican","American"];
 
 const appFb = initializeApp(shoppingListConfig);
 const auth = getAuth(appFb);
@@ -142,13 +144,14 @@ function App(){
   const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
   const toggleFlavor=f=>setRFlavors(prev=>{const n=new Set(prev); n.has(f)?n.delete(f):n.add(f); return n;});
   async function getRecipes(){
-    const ingredients=rIng.trim(); if(!ingredients) return;
+    const items=rIng.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+    if(!items.length) return;
     if(rWho==="baby"&&!rAge) return;
     setRLoading(true); setRErr(""); setRResults(null);
     try{
       const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),30000);
       const res=await fetch(WORKER_URL+"/recipes",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ingredients,forWhom:rWho,ageBand:rWho==="baby"?rAge:null,flavors:[...rFlavors],allowOneExtra:true}),signal:ctrl.signal});
+        body:JSON.stringify({ingredients:items.join(", "),staples:kitchen,mealType:rMeal,cuisine:rCuisine||null,forWhom:rWho,ageBand:rWho==="baby"?rAge:null,flavors:[...rFlavors],allowOneExtra:true}),signal:ctrl.signal});
       clearTimeout(t);
       if(!res.ok) throw new Error("worker "+res.status);
       const data=await res.json();
@@ -157,6 +160,10 @@ function App(){
     }catch(e){ setRErr("Couldn't get ideas \u2014 check your connection and try again."); }
     setRLoading(false);
   }
+  const addIngChip=name=>{const t=(name||"").trim(); if(!t) return; setRIng(cur=>{const have=cur.split(/[\n,]+/).map(x=>x.trim().toLowerCase()); if(have.includes(t.toLowerCase())) return cur; return cur.trim()?cur.replace(/\s*$/,"")+", "+t:t;});};
+  function openRecipes(){ setRecipeOpen(true); }
+  async function addKitchen(){ const t=kDraft.trim(); if(!t){return;} if(kitchen.some(x=>x.toLowerCase()===t.toLowerCase())){setKDraft("");return;} const next=[...kitchen,t]; await run("kitchen",()=>setDoc(cfgDoc(),{kitchen:next},{merge:true})); setKDraft(""); }
+  async function removeKitchen(t){ const next=kitchen.filter(x=>x!==t); await run("kitchen",()=>setDoc(cfgDoc(),{kitchen:next},{merge:true})); }
   const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
   const [storeSearch,setStoreSearch]=useState("");
   const [tagSearch,setTagSearch]=useState("");
@@ -169,6 +176,7 @@ function App(){
   const [pFilterRange,setPFilterRange]=useState("30");
   const [sortBy,setSortBy]=useState("date");
   const [cats,setCats]=useState(CATS);
+  const [kitchen,setKitchen]=useState([]);
   const [catModal,setCatModal]=useState(false);
   const [catDraft,setCatDraft]=useState([]);
   const [newCat,setNewCat]=useState("");
@@ -181,11 +189,15 @@ function App(){
   const [rWho,setRWho]=useState("family");
   const [rAge,setRAge]=useState("");
   const [rFlavors,setRFlavors]=useState(()=>new Set());
+  const [rMeal,setRMeal]=useState("meal");
+  const [rCuisine,setRCuisine]=useState("");
   const [rIng,setRIng]=useState("");
   const [rLoading,setRLoading]=useState(false);
   const [rResults,setRResults]=useState(null);
   const [rErr,setRErr]=useState("");
   const [rOpen,setROpen]=useState({});
+  const [kitchenModal,setKitchenModal]=useState(false);
+  const [kDraft,setKDraft]=useState("");
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
@@ -217,7 +229,8 @@ function App(){
     })();
     const u1=onSnapshot(cfgDoc(),d=>{if(d.exists()){const dd=d.data();
       if(dd.stores){setStores(dd.stores);}
-      if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);}});
+      if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);
+      if(dd.kitchen) setKitchen(dd.kitchen);}});
     const u2=onSnapshot(collection(db,"shoppinglist_dictionary"),snap=>{const m={};snap.forEach(d=>{const x=d.data();m[x.name||d.id]={stores:x.stores||[],category:x.category||"Unsorted"};});setDict(m);});
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
     const u4=onSnapshot(collection(db,"shoppinglist_purchased"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setPurch(a);});
@@ -446,6 +459,15 @@ function App(){
     });
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
+  const recentProduce=useMemo(()=>{
+    const cut=Date.now()-30*864e5, seen=new Set(), out=[];
+    purch.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).forEach(p=>{
+      if(((lookup(dict,p.name)||{}).category)!=="Produce") return;
+      const d=Date.parse(p.date); if(isNaN(d)||d<cut) return;
+      const k=(p.name||"").toLowerCase(); if(!k||seen.has(k)) return; seen.add(k); out.push(p.name);
+    });
+    return out;
+  },[purch,dict]);
   const listGroups=useMemo(()=>{
     const l=list.filter(i=>{
       const sp=(i.stores||[]).length===0 || (i.stores||[]).some(s=>!exclStores.has(s));
@@ -721,7 +743,8 @@ function App(){
       <div class="dropdown">
         <div class="ddemail">${user.email}</div>
         <button class="ddm" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>Staples</button>
-        <button class="ddm" onClick=${()=>{setMenu(false);setRecipeOpen(true);}}>Recipe ideas</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openRecipes();}}>Recipe ideas</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);setKitchenModal(true);}}>Kitchen staples</button>
         <button class="ddm" onClick=${()=>{setMenu(false);openStores();}}>Manage stores</button>
         <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage categories</button>
         <div class="ddsep"></div>
@@ -796,6 +819,21 @@ function App(){
         <button class="primary" disabled=${!retDate||isBusy("confirmret")} onClick=${confirmReturn}>${isBusy("confirmret")?html`<${Spin}/>Saving\u2026`:"Mark for return"}</button>
       </div>`:null}
 
+    <!-- kitchen staples -->
+    ${kitchenModal?html`
+      <div class="scrim" onClick=${()=>setKitchenModal(false)}></div>
+      <div class="sheet">
+        <div class="sheethead"><div class="lead">Kitchen staples</div><button class="sheetx" onClick=${()=>setKitchenModal(false)} aria-label="Close">\u00d7</button></div>
+        <div class="hint">Things you always have \u2014 recipes assume these are on hand so you don't list them each time.</div>
+        <div class="tagedit ringlist">
+          ${kitchen.map(t=>html`<span class="tagchip on">${t}<button class="tagx" onClick=${()=>removeKitchen(t)}>\u00d7</button></span>`)}
+        </div>
+        <div class="addrow">
+          <input class="tin flex" placeholder="e.g. salt, flour, eggs, honey\u2026" value=${kDraft} onInput=${e=>setKDraft(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter"){e.preventDefault();addKitchen();}}} />
+          <button class="primary sm" disabled=${isBusy("kitchen")||!kDraft.trim()} onClick=${addKitchen}>${isBusy("kitchen")?html`<${Spin}/>`:"Add"}</button>
+        </div>
+      </div>`:null}
+
     <!-- recipe ideas -->
     ${recipeOpen?html`
       <div class="recipepage">
@@ -804,8 +842,16 @@ function App(){
           <button class="sheetx" onClick=${()=>setRecipeOpen(false)} aria-label="Close">\u00d7</button>
         </div>
         <div class="rpbody">
-          <div class="hint">What do you have? List your ingredients and I'll suggest dishes you can make.</div>
-          <textarea class="tin ta" placeholder="e.g. banana, oats, milk, egg, apple, rice" value=${rIng} onInput=${e=>setRIng(e.target.value)}></textarea>
+          <div class="hint">Your ingredients (comma or line separated)</div>
+          <textarea class="tin ta" placeholder="e.g. paneer, spinach, tomato, rice\nor one per line" value=${rIng} onInput=${e=>setRIng(e.target.value)}></textarea>
+          ${recentProduce.length>0?html`
+            <div class="hint">Bought in the last 30 days \u2014 tap what you still have</div>
+            <div class="chiprow">${recentProduce.map(p=>html`<button class="selchip" onClick=${()=>addIngChip(p)}>+ ${p}</button>`)}</div>`:null}
+          ${kitchen.length?html`<div class="assumed">Assumed on hand: ${kitchen.join(", ")} \u00b7 <button class="linkbtn" onClick=${()=>setKitchenModal(true)}>edit</button></div>`:html`<div class="assumed"><button class="linkbtn" onClick=${()=>setKitchenModal(true)}>Set kitchen staples</button> (salt, flour, eggs\u2026) so recipes assume them.</div>`}
+          <div class="hint">Cuisine (optional)</div>
+          <div class="chiprow">${CUISINES.map(c=>html`<button class=${"selchip"+(rCuisine===c?" on":"")} onClick=${()=>setRCuisine(rCuisine===c?"":c)}>${c}</button>`)}</div>
+          <div class="hint">Meal type</div>
+          <div class="chiprow">${MEALS.map(([v,l])=>html`<button class=${"selchip"+(rMeal===v?" on":"")} onClick=${()=>setRMeal(v)}>${l}</button>`)}</div>
           <div class="hint">Who's it for?</div>
           <div class="chiprow">${WHO.map(([v,l])=>html`<button class=${"selchip"+(rWho===v?" on":"")} onClick=${()=>setRWho(v)}>${l}</button>`)}</div>
           ${rWho==="baby"?html`
@@ -827,6 +873,7 @@ function App(){
                       <span class="pright">${d.minutes?html`<span class="pcount">${d.minutes} min</span>`:null}<span class=${"pcaret"+(rOpen[i]?" up":"")}>\u25be</span></span>
                     </button>
                     ${rOpen[i]?html`<div class="pbody rbody">
+                      ${(d.need&&d.need.length)?html`<div class="needline">You'd need: ${d.need.join(", ")}</div>`:html`<div class="haveline">You have everything for this</div>`}
                       ${(d.ingredientsUsed&&d.ingredientsUsed.length)?html`<div class="rsec"><h5>Uses</h5><p>${d.ingredientsUsed.join(", ")}</p></div>`:null}
                       ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
                       ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
