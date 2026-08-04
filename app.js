@@ -854,7 +854,7 @@ function App(){
           ${recentProduce.length>0?html`
             <div class="hint">Bought in the last 30 days \u2014 tap what you still have</div>
             <div class="chiprow">${recentProduce.map(p=>html`<button class="selchip" onClick=${()=>addIngChip(p)}>+ ${p}</button>`)}</div>`:null}
-          ${kitchen.length?html`<div class="assumed">Assumed on hand: ${kitchen.join(", ")} \u00b7 <button class="linkbtn" onClick=${()=>setKitchenModal(true)}>edit</button></div>`:html`<div class="assumed"><button class="linkbtn" onClick=${()=>setKitchenModal(true)}>Set kitchen staples</button> (salt, flour, eggs\u2026) so recipes assume them.</div>`}
+          ${kitchen.length?html`<details class="assumed"><summary>Assumed on hand (${kitchen.length}) \u00b7 <button class="linkbtn" onClick=${e=>{e.preventDefault();setKitchenModal(true);}}>edit</button></summary><div class="assumedlist">${kitchen.join(", ")}</div></details>`:html`<div class="assumed"><button class="linkbtn" onClick=${()=>setKitchenModal(true)}>Set kitchen staples</button> (salt, flour, eggs\u2026) so recipes assume them.</div>`}
           <div class="hint">Cuisine (optional)</div>
           <div class="chiprow">${CUISINES.map(c=>html`<button class=${"selchip"+(rCuisine===c?" on":"")} onClick=${()=>setRCuisine(rCuisine===c?"":c)}>${c}</button>`)}</div>
           <div class="hint">Meal type</div>

@@ -321,3 +321,8 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .needline{font-size:13px;font-weight:700;color:#9a5b12;background:#fff7ed;border-radius:8px;padding:7px 10px;margin-bottom:6px}
 .haveline{font-size:13px;font-weight:700;color:var(--green-deep);background:var(--green-tint);border-radius:8px;padding:7px 10px;margin-bottom:6px}
 .ta.short{min-height:56px}
+details.assumed summary{cursor:pointer;list-style:none;font-size:13px;color:var(--muted);font-weight:600}
+details.assumed summary::-webkit-details-marker{display:none}
+details.assumed summary::before{content:"\25b8 ";color:var(--muted)}
+details.assumed[open] summary::before{content:"\25be ";}
+.assumedlist{margin-top:6px;font-size:13px;color:var(--muted);line-height:1.4}
