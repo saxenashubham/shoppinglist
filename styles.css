@@ -320,3 +320,4 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .linkbtn{color:var(--green);font-weight:700;text-decoration:underline}
 .needline{font-size:13px;font-weight:700;color:#9a5b12;background:#fff7ed;border-radius:8px;padding:7px 10px;margin-bottom:6px}
 .haveline{font-size:13px;font-weight:700;color:var(--green-deep);background:var(--green-tint);border-radius:8px;padding:7px 10px;margin-bottom:6px}
+.ta.short{min-height:56px}

@@ -162,7 +162,16 @@ function App(){
   }
   const addIngChip=name=>{const t=(name||"").trim(); if(!t) return; setRIng(cur=>{const have=cur.split(/[\n,]+/).map(x=>x.trim().toLowerCase()); if(have.includes(t.toLowerCase())) return cur; return cur.trim()?cur.replace(/\s*$/,"")+", "+t:t;});};
   function openRecipes(){ setRecipeOpen(true); }
-  async function addKitchen(){ const t=kDraft.trim(); if(!t){return;} if(kitchen.some(x=>x.toLowerCase()===t.toLowerCase())){setKDraft("");return;} const next=[...kitchen,t]; await run("kitchen",()=>setDoc(cfgDoc(),{kitchen:next},{merge:true})); setKDraft(""); }
+  async function addKitchen(){
+    const parts=kDraft.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+    if(!parts.length){return;}
+    const have=new Set(kitchen.map(x=>x.toLowerCase()));
+    const adds=[]; for(const p of parts){ if(!have.has(p.toLowerCase())){ have.add(p.toLowerCase()); adds.push(p); } }
+    if(!adds.length){ setKDraft(""); return; }
+    const next=[...kitchen,...adds];
+    await run("kitchen",()=>setDoc(cfgDoc(),{kitchen:next},{merge:true}));
+    setKDraft("");
+  }
   async function removeKitchen(t){ const next=kitchen.filter(x=>x!==t); await run("kitchen",()=>setDoc(cfgDoc(),{kitchen:next},{merge:true})); }
   const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
   const [storeSearch,setStoreSearch]=useState("");
@@ -828,10 +837,8 @@ function App(){
         <div class="tagedit ringlist">
           ${kitchen.map(t=>html`<span class="tagchip on">${t}<button class="tagx" onClick=${()=>removeKitchen(t)}>\u00d7</button></span>`)}
         </div>
-        <div class="addrow">
-          <input class="tin flex" placeholder="e.g. salt, flour, eggs, honey\u2026" value=${kDraft} onInput=${e=>setKDraft(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter"){e.preventDefault();addKitchen();}}} />
-          <button class="primary sm" disabled=${isBusy("kitchen")||!kDraft.trim()} onClick=${addKitchen}>${isBusy("kitchen")?html`<${Spin}/>`:"Add"}</button>
-        </div>
+        <textarea class="tin ta short" placeholder="salt, flour, eggs, honey\u2026 (comma or new line)" value=${kDraft} onInput=${e=>setKDraft(e.target.value)}></textarea>
+        <button class="primary" disabled=${isBusy("kitchen")||!kDraft.trim()} onClick=${addKitchen}>${isBusy("kitchen")?html`<${Spin}/>`:"Add"}</button>
       </div>`:null}
 
     <!-- recipe ideas -->
