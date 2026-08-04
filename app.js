@@ -572,7 +572,7 @@ function App(){
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
         : list.length===0
-        ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Staples.</div>`
+        ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Regularly Bought.</div>`
         : listGroups.map(g=>html`
           <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}>
             ${g.items.map(it=>html`
@@ -668,7 +668,7 @@ function App(){
     ${showAdd?html`
       <div class="scrim" onClick=${()=>setShowAdd(false)}></div>
       <div class="sheet">
-        <div class="sheethead"><div class="lead">Paste your voice list</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
+        <div class="sheethead"><div class="lead">Paste Your Voice List</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Alexa, WhatsApp, Notes \u2014 one line or comma-separated. Basketly splits it and files each item to the right store.</div>
         <textarea placeholder=${"2 lbs onions\ncilantro\npaneer\nmilk\ntoor dal"} value=${draft} onInput=${e=>setDraft(e.target.value)}></textarea>
         <button class="primary" disabled=${parsing||!draft.trim()} onClick=${addItems}>${parsing?html`<${Spin}/>Routing\u2026`:"Add to list"}</button>
@@ -676,7 +676,7 @@ function App(){
     ${review.length>0?html`
       <div class="scrim" onClick=${()=>setReview([])}></div>
       <div class="sheet">
-        <div class="sheethead"><div class="lead">New items \u2014 fix any store</div><button class="sheetx" onClick=${()=>setReview([])} aria-label="Close">\u00d7</button></div>
+        <div class="sheethead"><div class="lead">New Items \u2014 Fix Any Store</div><button class="sheetx" onClick=${()=>setReview([])} aria-label="Close">\u00d7</button></div>
         ${review.map(k=>{const meta=dict[k]||{stores:[],category:"Unsorted"};return html`
           <div class="rrow"><span class="rname">${k}</span><span class="rcat">${meta.category}</span>
             ${stores.map(s=>html`<button class=${"chip mini"+(meta.stores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleReviewStore(k,s.id)}>
@@ -718,7 +718,7 @@ function App(){
             <button class="rowx" disabled=${isBusy("delstore_"+s.id)} onClick=${()=>deleteStore(s)}>${isBusy("delstore_"+s.id)?html`<${Spin} g=${true}/>`:"\ud83d\uddd1"}</button>
           </div>`)}
         <button class="primary sm" disabled=${isBusy("savestores")} onClick=${saveStores}>${isBusy("savestores")?html`<${Spin}/>Saving\u2026`:"Save names & colors"}</button>
-        <div class="lead" style="margin-top:10px">Add a store</div>
+        <div class="lead" style="margin-top:10px">Add a Store</div>
         <input class="tin" placeholder="Store name" value=${newStore.name} onInput=${e=>setNewStore(n=>({...n,name:e.target.value}))} />
         <div class="pickrow">
           <div class="swatches">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(newStore.color===c?" on":"")} style=${"background:"+c} onClick=${()=>setNewStore(n=>({...n,color:c}))}></button>`)}</div>
@@ -751,11 +751,11 @@ function App(){
       <div class="menuscrim" onClick=${()=>setMenu(false)}></div>
       <div class="dropdown">
         <div class="ddemail">${user.email}</div>
-        <button class="ddm" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>Staples</button>
-        <button class="ddm" onClick=${()=>{setMenu(false);openRecipes();}}>Recipe ideas</button>
-        <button class="ddm" onClick=${()=>{setMenu(false);setKitchenModal(true);}}>Kitchen staples</button>
-        <button class="ddm" onClick=${()=>{setMenu(false);openStores();}}>Manage stores</button>
-        <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage categories</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>Regularly Bought</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openRecipes();}}>Recipe Ideas</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);setKitchenModal(true);}}>Kitchen Staples</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openStores();}}>Manage Stores</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage Categories</button>
         <div class="ddsep"></div>
         <button class="ddm ddout" onClick=${()=>signOut(auth)}>Sign out</button>
       </div>`:null}
@@ -770,7 +770,7 @@ function App(){
           <div class="serow"><span class="flex">${c}</span>
             <button class="rowx" disabled=${isBusy("delcat_"+c)} onClick=${()=>deleteCat(c)}>${isBusy("delcat_"+c)?html`<${Spin} g=${true}/>`:"\ud83d\uddd1"}</button>
           </div>`)}
-        <div class="lead" style="margin-top:10px">Add a category</div>
+        <div class="lead" style="margin-top:10px">Add a Category</div>
         <input class="tin" placeholder="e.g. Clothes" value=${newCat} onInput=${e=>setNewCat(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")addCat();}} />
         <button class="primary" disabled=${!newCat.trim()||isBusy("addcat")} onClick=${addCat}>${isBusy("addcat")?html`<${Spin}/>Adding\u2026`:"Add category"}</button>
       </div>`:null}
@@ -779,10 +779,10 @@ function App(){
     ${staplesModal?html`
       <div class="scrim" onClick=${()=>setStaplesModal(false)}></div>
       <div class="sheet tall">
-        <div class="sheethead"><div class="lead">Staples</div><button class="sheetx" onClick=${()=>setStaplesModal(false)} aria-label="Close">\u00d7</button></div>
+        <div class="sheethead"><div class="lead">Regularly Bought</div><button class="sheetx" onClick=${()=>setStaplesModal(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Your regulars. Tick what you need this week and add them all at once. Items already on the list are greyed out.</div>
         <input class="tin" placeholder="Add a staple (e.g. milk)" value=${newStaple} onInput=${e=>setNewStaple(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")addNewStaple();}} />
-        ${staples.length===0?html`<div class="hint">No staples yet \u2014 star items on the List or in Purchase History to keep them here.</div>`:null}
+        ${staples.length===0?html`<div class="hint">Nothing here yet \u2014 star items on the List or in Purchase History to keep them here.</div>`:null}
         ${staples.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>{
           const onList=list.some(i=>i.key===s.name);
           return html`<div class=${"strow"+(onList?" off":"")} onClick=${()=>{ if(!onList) setStapleSel(v=>({...v,[s.id]:!v[s.id]})); }}>
@@ -832,7 +832,7 @@ function App(){
     ${kitchenModal?html`
       <div class="scrim" onClick=${()=>setKitchenModal(false)}></div>
       <div class="sheet">
-        <div class="sheethead"><div class="lead">Kitchen staples</div><button class="sheetx" onClick=${()=>setKitchenModal(false)} aria-label="Close">\u00d7</button></div>
+        <div class="sheethead"><div class="lead">Kitchen Staples</div><button class="sheetx" onClick=${()=>setKitchenModal(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Things you always have \u2014 recipes assume these are on hand so you don't list them each time.</div>
         <div class="tagedit ringlist">
           ${kitchen.map(t=>html`<span class="tagchip on">${t}<button class="tagx" onClick=${()=>removeKitchen(t)}>\u00d7</button></span>`)}
@@ -845,7 +845,7 @@ function App(){
     ${recipeOpen?html`
       <div class="recipepage">
         <div class="rphead">
-          <div class="rptitle">Recipe ideas</div>
+          <div class="rptitle">Recipe Ideas</div>
           <button class="sheetx" onClick=${()=>setRecipeOpen(false)} aria-label="Close">\u00d7</button>
         </div>
         <div class="rpbody">
