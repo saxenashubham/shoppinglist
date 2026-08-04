@@ -106,7 +106,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 /* sheets / modals */
 .scrim{position:fixed;inset:0;background:rgba(22,36,29,.34);z-index:20}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;max-width:480px;margin:0 auto;background:var(--card);
-  border-radius:18px 18px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 40px -12px rgba(22,36,29,.4)}
+  border-radius:18px 18px 0 0;padding:0 18px calc(22px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 40px -12px rgba(22,36,29,.4);max-height:88dvh;overflow-y:auto;overscroll-behavior:contain}
 .lead{font-family:var(--display);font-weight:600;font-size:16px}
 .hint{font-size:13px;color:var(--muted);line-height:1.45}
 textarea{width:100%;min-height:130px;resize:vertical;border:1.5px solid var(--line);border-radius:var(--r);background:#fff;padding:13px;font-family:var(--body);font-size:16px;line-height:1.5;color:var(--ink)}
@@ -231,7 +231,7 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .prow{gap:8px}
 .prow .pinfo{flex:1;min-width:0}
 /* close buttons + full-spectrum colour picker */
-.sheethead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sheethead{position:sticky;top:0;z-index:4;background:var(--card);display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 -18px 2px;padding:16px 18px 12px;border-bottom:1px solid var(--line);border-radius:18px 18px 0 0}
 .sheetx{font-size:26px;color:var(--muted);line-height:1;padding:0 4px}
 .colorin{width:46px;height:34px;padding:0;border:1.5px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;flex:0 0 auto}
 .colorin::-webkit-color-swatch-wrapper{padding:3px}

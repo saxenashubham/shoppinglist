@@ -676,7 +676,7 @@ function App(){
     ${review.length>0?html`
       <div class="scrim" onClick=${()=>setReview([])}></div>
       <div class="sheet">
-        <div class="lead">New items \u2014 fix any store</div>
+        <div class="sheethead"><div class="lead">New items \u2014 fix any store</div><button class="sheetx" onClick=${()=>setReview([])} aria-label="Close">\u00d7</button></div>
         ${review.map(k=>{const meta=dict[k]||{stores:[],category:"Unsorted"};return html`
           <div class="rrow"><span class="rname">${k}</span><span class="rcat">${meta.category}</span>
             ${stores.map(s=>html`<button class=${"chip mini"+(meta.stores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleReviewStore(k,s.id)}>
@@ -689,7 +689,7 @@ function App(){
     ${itemModal?html`
       <div class="scrim" onClick=${()=>setItemModal(null)}></div>
       <div class="sheet">
-        <div class="lead">${itemModal.name}</div>
+        <div class="sheethead"><div class="lead">${itemModal.name}</div><button class="sheetx" onClick=${()=>setItemModal(null)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Category</div>
         <select class="sel" value=${editCat} onChange=${e=>setEditCat(e.target.value)}>
           ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
@@ -731,7 +731,7 @@ function App(){
     ${delStore?html`
       <div class="scrim" onClick=${()=>setDelStore(null)}></div>
       <div class="sheet tall">
-        <div class="lead">Deleting ${delStore.name}</div>
+        <div class="sheethead"><div class="lead">Deleting ${delStore.name}</div><button class="sheetx" onClick=${()=>setDelStore(null)} aria-label="Close">\u00d7</button></div>
         <div class="hint">These items are only at ${delStore.name}. Pick a new store for each, or leave blank to move it to Unsorted.</div>
         ${orphansOf(delStore.id).map(it=>html`
           <div class="orow">
@@ -764,7 +764,7 @@ function App(){
     ${catModal?html`
       <div class="scrim" onClick=${()=>setCatModal(false)}></div>
       <div class="sheet tall">
-        <div class="lead">Categories</div>
+        <div class="sheethead"><div class="lead">Categories</div><button class="sheetx" onClick=${()=>setCatModal(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">This order is how items group on the List and Shop pages. \u201cUnsorted\u201d always stays last.</div>
         ${catDraft.map(c=>html`
           <div class="serow"><span class="flex">${c}</span>
@@ -779,7 +779,7 @@ function App(){
     ${staplesModal?html`
       <div class="scrim" onClick=${()=>setStaplesModal(false)}></div>
       <div class="sheet tall">
-        <div class="lead">Staples</div>
+        <div class="sheethead"><div class="lead">Staples</div><button class="sheetx" onClick=${()=>setStaplesModal(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Your regulars. Tick what you need this week and add them all at once. Items already on the list are greyed out.</div>
         <input class="tin" placeholder="Add a staple (e.g. milk)" value=${newStaple} onInput=${e=>setNewStaple(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")addNewStaple();}} />
         ${staples.length===0?html`<div class="hint">No staples yet \u2014 star items on the List or in Purchase History to keep them here.</div>`:null}
@@ -799,7 +799,7 @@ function App(){
     ${assignList.length>0?html`
       <div class="scrim" onClick=${commitAssign}></div>
       <div class="sheet tall">
-        <div class="lead">Which store${assignList.length>1?"s":""}?</div>
+        <div class="sheethead"><div class="lead">Which store${assignList.length>1?"s":""}?</div><button class="sheetx" onClick=${commitAssign} aria-label="Close">\u00d7</button></div>
         <div class="hint">Couldn't auto-detect where to buy ${assignList.length>1?"these":"this"}. Pick a store (and category) \u2014 I'll remember for next time.</div>
         ${assignList.map((it,idx)=>html`
           <div class="arow">
@@ -819,7 +819,7 @@ function App(){
     ${retModal?html`
       <div class="scrim" onClick=${()=>setRetModal(null)}></div>
       <div class="sheet">
-        <div class="lead">Return \u201c${retModal.name}\u201d</div>
+        <div class="sheethead"><div class="lead">Return \u201c${retModal.name}\u201d</div><button class="sheetx" onClick=${()=>setRetModal(null)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Bought at ${sname(retModal.store)} on ${retModal.date}. Enter the return-by date \u2014 a red banner appears within 5 days of it.</div>
         <input class="tin" type="date" value=${retDate} min=${todayISO()} onInput=${e=>setRetDate(e.target.value)} />
         <label class="attachbtn">${retFile?("\u2713 "+retFile.name):"\ud83d\udcce Attach receipt / QR / label \u2014 image or PDF (optional)"}
