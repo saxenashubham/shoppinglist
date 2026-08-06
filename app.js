@@ -22,6 +22,7 @@ const WHO=[["baby","Baby"],["kids","Kids"],["adults","Adults"],["family","Whole 
 const AGES=[["u6","Under 6 mo"],["6_9","6-9 mo"],["9_12","9-12 mo"],["12_18","12-18 mo"],["18_36","18-36 mo"]];
 const FLAVORS=["Sweet","Savory","Spicy","Mild"];
 const MEALS=[["snack","Snack"],["meal","Meal"],["soft","Soft (sore gums)"]];
+let _migRan=false;
 const CUISINES=["Indian","Chinese","Thai","Italian","Mexican","American"];
 
 const appFb = initializeApp(shoppingListConfig);
@@ -59,6 +60,7 @@ const SEED_DICT = {
 };
 
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,120) || "x";
+const titleCase = s => (s||"").split(" ").map(w=>w?w.charAt(0).toUpperCase()+w.slice(1):w).join(" ");
 const todayISO = () => new Date().toISOString().slice(0,10);
 const daysUntil = iso => Math.ceil((new Date(iso+"T00:00:00") - new Date(new Date().toDateString())) / 86400000);
 const cfgDoc = () => doc(db,"shoppinglist_config","app");
@@ -68,14 +70,14 @@ function normalizeName(raw){
   s = s.replace(/^[-*\d\).\s]+/,"");
   s = s.replace(/\b(\d+(\.\d+)?)\s*(lbs?|lb|kg|g|oz|gallons?|gal|dozen|packs?|pkt|bunch(es)?|cans?|bottles?|boxes?|bags?)\b/gi,"");
   s = s.replace(/\b(a|an|some|few|couple of|one|two|three|four|five)\b/gi,"");
-  return s.replace(/\s+/g," ").trim();
+  return titleCase(s.replace(/\s+/g," ").trim());
 }
 const splitBlob = t => t.split(/\r?\n|,|;|\u2022|\band\b/i).map(x=>x.trim()).filter(Boolean).map(normalizeName).filter(Boolean);
 function lookup(dict, name){
-  if(dict[name]) return dict[name];
-  for(const k of Object.keys(dict)){
-    if(name===k) return dict[k];
-    if(name.length>3 && (name.includes(k)||k.includes(name))) return dict[k];
+  const nl=(name||"").toLowerCase();
+  for(const k of Object.keys(dict)){ if(nl===k.toLowerCase()) return dict[k]; }
+  for(const k of Object.keys(dict)){ const kl=k.toLowerCase();
+    if(nl.length>3 && (nl.includes(kl)||kl.includes(nl))) return dict[k];
   }
   return null;
 }
@@ -114,12 +116,14 @@ function Loader({label}){
 function App(){
   const [user,setUser]=useState(undefined);
   const [loading,setLoading]=useState(true);
+  const [migDone,setMigDone]=useState(null);
   const [stores,setStores]=useState(DEFAULT_STORES);
   const [dict,setDict]=useState({});
   const [list,setList]=useState([]);
   const [purch,setPurch]=useState([]);
   const [page,setPage]=useState("list");
   const [checkedIn,setCheckedIn]=useState(null);
+  const [shopAdd,setShopAdd]=useState("");
   const [draft,setDraft]=useState("");
   const [parsing,setParsing]=useState(false);
   const [review,setReview]=useState([]);
@@ -182,8 +186,11 @@ function App(){
   const [viewImg,setViewImg]=useState(null);
   const [pendingOnly,setPendingOnly]=useState(false);
   const [pFilterStore,setPFilterStore]=useState("all");
+  const [pFilterCat,setPFilterCat]=useState("all");
   const [pFilterRange,setPFilterRange]=useState("30");
   const [sortBy,setSortBy]=useState("date");
+  const [sortDir,setSortDir]=useState("desc");
+  const [histPage,setHistPage]=useState(1);
   const [cats,setCats]=useState(CATS);
   const [kitchen,setKitchen]=useState([]);
   const [catModal,setCatModal]=useState(false);
@@ -212,6 +219,7 @@ function App(){
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
   const sname=id=>(stores.find(s=>s.id===id)||{}).name||id;
   const toggleCat=key=>setCollapsed(c=>({...c,[key]:!c[key]}));
+  const setAllCats=(keys,collapse)=>setCollapsed(c=>{const n={...c}; keys.forEach(k=>{ if(collapse) n[k]=true; else delete n[k]; }); return n;});
   const isBusy=k=>!!busy[k];
   async function run(key, fn){ setBusy(b=>({...b,[key]:true}));
     try{ await fn(); } catch(e){ flash("Something went wrong"); }
@@ -239,7 +247,8 @@ function App(){
     const u1=onSnapshot(cfgDoc(),d=>{if(d.exists()){const dd=d.data();
       if(dd.stores){setStores(dd.stores);}
       if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);
-      if(dd.kitchen) setKitchen(dd.kitchen);}});
+      if(dd.kitchen) setKitchen(dd.kitchen);
+      setMigDone(!!dd.nameCaseV1);}});
     const u2=onSnapshot(collection(db,"shoppinglist_dictionary"),snap=>{const m={};snap.forEach(d=>{const x=d.data();m[x.name||d.id]={stores:x.stores||[],category:x.category||"Unsorted"};});setDict(m);});
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
     const u4=onSnapshot(collection(db,"shoppinglist_purchased"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setPurch(a);});
@@ -260,13 +269,17 @@ function App(){
       setParsing(false);
     }
     const merged={...dict,...learned};
-    const existing=new Set(list.map(i=>i.key));
+    const existing=new Set(list.map(i=>(i.key||"").toLowerCase()));
     const toAdd=[], needAssign=[];
     for(const n of names){
-      if(existing.has(n)) continue; existing.add(n);
-      const meta=lookup(merged,n)||learned[n]||{stores:[],category:"Unsorted"};
-      if((meta.stores||[]).length) toAdd.push({name:n,stores:meta.stores,category:meta.category||"Unsorted"});
-      else needAssign.push({name:n,stores:[],category:meta.category||"Unsorted"});
+      if(existing.has(n.toLowerCase())) continue; existing.add(n.toLowerCase());
+      const known=lookup(dict,n);
+      if(known && (known.stores||[]).length){
+        toAdd.push({name:n,stores:known.stores,category:known.category||"Unsorted"});
+      } else {
+        const cat=(learned[n]&&learned[n].category)||(known&&known.category)||"Unsorted";
+        needAssign.push({name:n,stores:[],category:cat});
+      }
     }
     if(toAdd.length){
       await run("additems", async ()=>{
@@ -323,6 +336,46 @@ function App(){
   async function removeCurrentItem(){ await run("removeitem", ()=>deleteDoc(doc(db,"shoppinglist_list",itemModal.id))); setItemModal(null); }
   const removeRow=it=>run("rm_"+it.id, ()=>deleteDoc(doc(db,"shoppinglist_list",it.id)));
 
+  async function addInShop(){
+    const t=normalizeName(shopAdd); if(!t||!checkedIn) return;
+    if(list.some(i=>i.key.toLowerCase()===t.toLowerCase()&&(i.stores||[]).includes(checkedIn))){ setShopAdd(""); flash(t+" is already on this list"); return; }
+    const known=lookup(dict,t);
+    let category=(known&&known.category)||"Unsorted";
+    let stores=known?((known.stores||[]).includes(checkedIn)?known.stores:[...(known.stores||[]),checkedIn]):[checkedIn];
+    if(!known){ try{ const learned=await routeUnknowns([t],stores); const m=Object.values(learned)[0]; if(m&&m.category) category=m.category; }catch{} }
+    await run("shopadd", async ()=>{
+      const b=writeBatch(db);
+      b.set(doc(db,"shoppinglist_dictionary",slug(t)),{name:t,stores,category},{merge:true});
+      b.set(doc(collection(db,"shoppinglist_list")),{key:t,name:t,stores:[...stores],category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+      await b.commit();
+    });
+    setShopAdd(""); flash(t+" added to "+sname(checkedIn));
+  }
+  async function cleanupNames(silent){
+    const work=async ()=>{
+      const ops=[];
+      const groups={};
+      for(const it of list){ const tc=titleCase(it.name||it.key||""); const k=tc.toLowerCase(); (groups[k]||(groups[k]={tc,items:[]})).items.push(it); }
+      for(const g of Object.values(groups)){
+        const items=g.items;
+        const stores=[...new Set(items.flatMap(i=>i.stores||[]))];
+        const tags=[...new Set(items.flatMap(i=>i.tags||[]))];
+        const keep=items[0];
+        ops.push({t:"set",ref:doc(db,"shoppinglist_list",keep.id),data:{key:g.tc,name:g.tc,stores,tags}});
+        for(const dup of items.slice(1)) ops.push({t:"del",ref:doc(db,"shoppinglist_list",dup.id)});
+      }
+      for(const nm of Object.keys(dict)) ops.push({t:"set",ref:doc(db,"shoppinglist_dictionary",slug(nm)),data:{name:titleCase(nm)}});
+      for(const p of purch){ const tc=titleCase(p.name||""); if(tc!==p.name) ops.push({t:"set",ref:doc(db,"shoppinglist_purchased",p.id),data:{name:tc}}); }
+      for(let i=0;i<ops.length;i+=400){
+        const b=writeBatch(db);
+        for(const o of ops.slice(i,i+400)){ o.t==="del"?b.delete(o.ref):b.set(o.ref,o.data,{merge:true}); }
+        await b.commit();
+      }
+      await setDoc(cfgDoc(),{nameCaseV1:true},{merge:true});
+    };
+    if(silent){ try{ await work(); }catch(e){} return; }
+    await run("cleanup", work); flash("Names cleaned up");
+  }
   async function checkOut(){
     const store=checkedIn;
     const done=list.filter(i=>i.stores.includes(store)&&i.checked);
@@ -489,17 +542,28 @@ function App(){
   const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+checkedIn),[shopItems,collapsed,checkedIn,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
 
+  const pCatOf=name=>((lookup(dict,name)||{}).category)||"Unsorted";
   const filteredPurch=useMemo(()=>{
     let ps=purch.slice();
     if(pendingOnly) ps=ps.filter(p=>p.status==="returning");
     if(pFilterStore!=="all") ps=ps.filter(p=>p.store===pFilterStore);
+    if(pFilterCat!=="all") ps=ps.filter(p=>pCatOf(p.name)===pFilterCat);
     if(pFilterRange!=="all"){const lim=parseInt(pFilterRange,10);
       ps=ps.filter(p=>{const d=(new Date()-new Date(p.date+"T00:00:00"))/86400000; return d<=lim;});}
     return ps.sort((a,b)=>{
       if(sortBy==="store"){const c=sname(a.store).localeCompare(sname(b.store)); if(c) return c;}
-      return (b.date||"").localeCompare(a.date||"");
+      const c=(a.date||"").localeCompare(b.date||"");
+      return sortDir==="asc"?c:-c;
     });
-  },[purch,pendingOnly,pFilterStore,pFilterRange,sortBy,stores]);
+  },[purch,pendingOnly,pFilterStore,pFilterCat,pFilterRange,sortBy,sortDir,stores,dict]);
+  const HIST_PER=20;
+  const histPages=Math.max(1,Math.ceil(filteredPurch.length/HIST_PER));
+  const histSlice=useMemo(()=>filteredPurch.slice((histPage-1)*HIST_PER,histPage*HIST_PER),[filteredPurch,histPage]);
+  useEffect(()=>{ setHistPage(1); },[pendingOnly,pFilterStore,pFilterCat,pFilterRange,sortBy,sortDir]);
+  useEffect(()=>{
+    if(migDone!==false||loading||_migRan) return;
+    _migRan=true; cleanupNames(true);
+  },[migDone,loading,list,dict,purch]);
 
   const check=html`<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
@@ -566,9 +630,12 @@ function App(){
             </div>`:null}
         </div>`:null}
       ${list.length>0?html`
-        <div class="listcount">${(exclTags.size||exclStores.size)
-          ? html`${listGroups.reduce((a,g)=>a+g.items.length,0)} <span class="lcmuted">of ${list.length} items</span>`
-          : html`${list.length} item${list.length===1?"":"s"}`}</div>`:null}
+        <div class="listtools">
+          <span class="listcount">${(exclTags.size||exclStores.size)
+            ? html`${listGroups.reduce((a,g)=>a+g.items.length,0)} <span class="lcmuted">of ${list.length} items</span>`
+            : html`${list.length} item${list.length===1?"":"s"}`}</span>
+          ${listGroups.length>1?html`<button class="expandbtn" onClick=${()=>setAllCats(listGroups.map(g=>g.key),listGroups.every(g=>g.open))}>${listGroups.every(g=>g.open)?"Collapse all":"Expand all"}</button>`:null}
+        </div>`:null}
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
         : list.length===0
@@ -606,6 +673,10 @@ function App(){
         <span class="cistore">${lsq(scolor(checkedIn),sname(checkedIn))}At ${sname(checkedIn)}</span>
         <button class="ghost ciout" onClick=${checkOut}>Check out</button>
       </div>
+      <div class="shopaddrow">
+        <input class="tin flex" placeholder=${"Add to "+sname(checkedIn)+"\u2026"} value=${shopAdd} onInput=${e=>setShopAdd(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter"){e.preventDefault();addInShop();}}} />
+        <button class="primary sm" disabled=${isBusy("shopadd")||!shopAdd.trim()} onClick=${addInShop}>${isBusy("shopadd")?html`<${Spin}/>`:"Add"}</button>
+      </div>
       ${shopGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing left for ${sname(checkedIn)}</div>You're all done here \u2014 check out.</div>`
         : shopGroups.map(g=>{
@@ -630,18 +701,26 @@ function App(){
         <select class="sel sm" value=${sortBy} onChange=${e=>setSortBy(e.target.value)}>
           <option value="date">Sort: Date</option><option value="store">Sort: Store</option>
         </select>
+        <button class="fbtn" onClick=${()=>setSortDir(d=>d==="desc"?"asc":"desc")}>${sortDir==="desc"?"Newest first":"Oldest first"}</button>
         <select class="sel sm" value=${pFilterStore} onChange=${e=>setPFilterStore(e.target.value)}>
           <option value="all">All stores</option>
           ${stores.map(s=>html`<option value=${s.id}>${s.name}</option>`)}
         </select>
+        <select class="sel sm" value=${pFilterCat} onChange=${e=>setPFilterCat(e.target.value)}>
+          <option value="all">All categories</option>
+          ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
+        </select>
         <select class="sel sm" value=${pFilterRange} onChange=${e=>setPFilterRange(e.target.value)}>
           <option value="7">7 days</option><option value="30">30 days</option>
-          <option value="90">90 days</option><option value="all">All time</option>
+          <option value="90">90 days</option><option value="180">6 months</option>
+          <option value="365">1 year</option><option value="all">All time</option>
         </select>
       </div>
       ${filteredPurch.length===0
         ? html`<div class="empty"><div class="big">No purchases</div>Items you mark bought show up here.</div>`
-        : filteredPurch.map(p=>{
+        : html`
+          <div class="listcount">${filteredPurch.length} item${filteredPurch.length===1?"":"s"}${histPages>1?html` \u00b7 <span class="lcmuted">page ${histPage} of ${histPages}</span>`:null}</div>
+          ${histSlice.map(p=>{
             const ret=p.status==="returning"; const d=ret?daysUntil(p.returnByDate):null;
             const rk="ret_"+p.id, kk="keep_"+p.id;
             return html`
@@ -661,7 +740,13 @@ function App(){
                   <button class="ghost mut" disabled=${isBusy(kk)} onClick=${()=>resolveReturn(p.id,"kept",kk)}>${isBusy(kk)?html`<${Spin} g=${true}/>`:"Keeping"}</button>`:null}
                 ${(p.status==="returned"||p.status==="kept")?html`<span class="tag">${p.status}</span>`:null}
               </div>
-            </div>`;})}`:null}
+            </div>`;})}
+          ${histPages>1?html`
+            <div class="pager">
+              <button class="ghost" disabled=${histPage<=1} onClick=${()=>setHistPage(p=>Math.max(1,p-1))}>\u2190 Prev</button>
+              <span class="pnum">${histPage} / ${histPages}</span>
+              <button class="ghost" disabled=${histPage>=histPages} onClick=${()=>setHistPage(p=>Math.min(histPages,p+1))}>Next \u2192</button>
+            </div>`:null}`}`:null}
     `}
 
     <!-- add items -->
