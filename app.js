@@ -18,6 +18,11 @@ const html = htm.bind(h);
 function textOn(hex){ if(!hex||hex[0]!=="#") return "#161d18"; let h=hex.slice(1); if(h.length===3)h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); const L=(0.299*r+0.587*g+0.114*b)/255; return L>0.62?"#161d18":"#fff"; }
 const sqChar=n=>(((n||"?").trim()[0])||"?").toUpperCase();
 const lsq=(color,name,cls)=>html`<i class=${"lsq"+(cls?" "+cls:"")} style=${"background:"+(color||"#ccc")+";color:"+textOn(color)}>${sqChar(name)}</i>`;
+const WHO=[["baby","Baby"],["kids","Kids"],["adults","Adults"],["family","Whole family"]];
+const AGES=[["u6","Under 6 mo"],["6_9","6-9 mo"],["9_12","9-12 mo"],["12_18","12-18 mo"],["18_36","18-36 mo"]];
+const FLAVORS=["Sweet","Savory","Spicy","Mild"];
+const MEALS=[["snack","Snack"],["meal","Meal"],["soft","Soft (sore gums)"]];
+const CUISINES=["Indian","Chinese","Thai","Italian","Mexican","American"];
 
 const appFb = initializeApp(shoppingListConfig);
 const auth = getAuth(appFb);
@@ -137,6 +142,37 @@ function App(){
   const [exclTags,setExclTags]=useState(()=>new Set());
   const [exclStores,setExclStores]=useState(()=>new Set());
   const toggleExcl=(setter,val)=>setter(prev=>{const n=new Set(prev); n.has(val)?n.delete(val):n.add(val); return n;});
+  const toggleFlavor=f=>setRFlavors(prev=>{const n=new Set(prev); n.has(f)?n.delete(f):n.add(f); return n;});
+  async function getRecipes(){
+    const items=rIng.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+    if(!items.length) return;
+    if(rWho==="baby"&&!rAge) return;
+    setRLoading(true); setRErr(""); setRResults(null);
+    try{
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),30000);
+      const res=await fetch(WORKER_URL+"/recipes",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ingredients:items.join(", "),staples:kitchen,mealType:rMeal,cuisine:rCuisine||null,forWhom:rWho,ageBand:rWho==="baby"?rAge:null,flavors:[...rFlavors],allowOneExtra:true}),signal:ctrl.signal});
+      clearTimeout(t);
+      if(!res.ok) throw new Error("worker "+res.status);
+      const data=await res.json();
+      const arr=Array.isArray(data)?data:(data.dishes||[]);
+      setRResults(arr); setROpen(arr.length?{0:true}:{});
+    }catch(e){ setRErr("Couldn't get ideas \u2014 check your connection and try again."); }
+    setRLoading(false);
+  }
+  const addIngChip=name=>{const t=(name||"").trim(); if(!t) return; setRIng(cur=>{const have=cur.split(/[\n,]+/).map(x=>x.trim().toLowerCase()); if(have.includes(t.toLowerCase())) return cur; return cur.trim()?cur.replace(/\s*$/,"")+", "+t:t;});};
+  function openRecipes(){ setRecipeOpen(true); }
+  async function addKitchen(){
+    const parts=kDraft.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+    if(!parts.length){return;}
+    const have=new Set(kitchen.map(x=>x.toLowerCase()));
+    const adds=[]; for(const p of parts){ if(!have.has(p.toLowerCase())){ have.add(p.toLowerCase()); adds.push(p); } }
+    if(!adds.length){ setKDraft(""); return; }
+    const next=[...kitchen,...adds];
+    await run("kitchen",()=>setDoc(cfgDoc(),{kitchen:next},{merge:true}));
+    setKDraft("");
+  }
+  async function removeKitchen(t){ const next=kitchen.filter(x=>x!==t); await run("kitchen",()=>setDoc(cfgDoc(),{kitchen:next},{merge:true})); }
   const [openFilter,setOpenFilter]=useState(null);   // 'store' | 'tag' | null
   const [storeSearch,setStoreSearch]=useState("");
   const [tagSearch,setTagSearch]=useState("");
@@ -149,6 +185,7 @@ function App(){
   const [pFilterRange,setPFilterRange]=useState("30");
   const [sortBy,setSortBy]=useState("date");
   const [cats,setCats]=useState(CATS);
+  const [kitchen,setKitchen]=useState([]);
   const [catModal,setCatModal]=useState(false);
   const [catDraft,setCatDraft]=useState([]);
   const [newCat,setNewCat]=useState("");
@@ -157,6 +194,19 @@ function App(){
   const [stapleSel,setStapleSel]=useState({});
   const [newStaple,setNewStaple]=useState("");
   const [menu,setMenu]=useState(false);
+  const [recipeOpen,setRecipeOpen]=useState(false);
+  const [rWho,setRWho]=useState("family");
+  const [rAge,setRAge]=useState("");
+  const [rFlavors,setRFlavors]=useState(()=>new Set());
+  const [rMeal,setRMeal]=useState("meal");
+  const [rCuisine,setRCuisine]=useState("");
+  const [rIng,setRIng]=useState("");
+  const [rLoading,setRLoading]=useState(false);
+  const [rResults,setRResults]=useState(null);
+  const [rErr,setRErr]=useState("");
+  const [rOpen,setROpen]=useState({});
+  const [kitchenModal,setKitchenModal]=useState(false);
+  const [kDraft,setKDraft]=useState("");
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
@@ -188,7 +238,8 @@ function App(){
     })();
     const u1=onSnapshot(cfgDoc(),d=>{if(d.exists()){const dd=d.data();
       if(dd.stores){setStores(dd.stores);}
-      if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);}});
+      if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);
+      if(dd.kitchen) setKitchen(dd.kitchen);}});
     const u2=onSnapshot(collection(db,"shoppinglist_dictionary"),snap=>{const m={};snap.forEach(d=>{const x=d.data();m[x.name||d.id]={stores:x.stores||[],category:x.category||"Unsorted"};});setDict(m);});
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
     const u4=onSnapshot(collection(db,"shoppinglist_purchased"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setPurch(a);});
@@ -417,6 +468,15 @@ function App(){
     });
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
+  const recentProduce=useMemo(()=>{
+    const cut=Date.now()-30*864e5, seen=new Set(), out=[];
+    purch.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).forEach(p=>{
+      if(((lookup(dict,p.name)||{}).category)!=="Produce") return;
+      const d=Date.parse(p.date); if(isNaN(d)||d<cut) return;
+      const k=(p.name||"").toLowerCase(); if(!k||seen.has(k)) return; seen.add(k); out.push(p.name);
+    });
+    return out;
+  },[purch,dict]);
   const listGroups=useMemo(()=>{
     const l=list.filter(i=>{
       const sp=(i.stores||[]).length===0 || (i.stores||[]).some(s=>!exclStores.has(s));
@@ -512,7 +572,7 @@ function App(){
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
         : list.length===0
-        ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Staples.</div>`
+        ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Regularly Bought.</div>`
         : listGroups.map(g=>html`
           <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}>
             ${g.items.map(it=>html`
@@ -608,7 +668,7 @@ function App(){
     ${showAdd?html`
       <div class="scrim" onClick=${()=>setShowAdd(false)}></div>
       <div class="sheet">
-        <div class="sheethead"><div class="lead">Paste your voice list</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
+        <div class="sheethead"><div class="lead">Paste Your Voice List</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Alexa, WhatsApp, Notes \u2014 one line or comma-separated. Basketly splits it and files each item to the right store.</div>
         <textarea placeholder=${"2 lbs onions\ncilantro\npaneer\nmilk\ntoor dal"} value=${draft} onInput=${e=>setDraft(e.target.value)}></textarea>
         <button class="primary" disabled=${parsing||!draft.trim()} onClick=${addItems}>${parsing?html`<${Spin}/>Routing\u2026`:"Add to list"}</button>
@@ -616,7 +676,7 @@ function App(){
     ${review.length>0?html`
       <div class="scrim" onClick=${()=>setReview([])}></div>
       <div class="sheet">
-        <div class="lead">New items \u2014 fix any store</div>
+        <div class="sheethead"><div class="lead">New Items \u2014 Fix Any Store</div><button class="sheetx" onClick=${()=>setReview([])} aria-label="Close">\u00d7</button></div>
         ${review.map(k=>{const meta=dict[k]||{stores:[],category:"Unsorted"};return html`
           <div class="rrow"><span class="rname">${k}</span><span class="rcat">${meta.category}</span>
             ${stores.map(s=>html`<button class=${"chip mini"+(meta.stores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleReviewStore(k,s.id)}>
@@ -629,7 +689,7 @@ function App(){
     ${itemModal?html`
       <div class="scrim" onClick=${()=>setItemModal(null)}></div>
       <div class="sheet">
-        <div class="lead">${itemModal.name}</div>
+        <div class="sheethead"><div class="lead">${itemModal.name}</div><button class="sheetx" onClick=${()=>setItemModal(null)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Category</div>
         <select class="sel" value=${editCat} onChange=${e=>setEditCat(e.target.value)}>
           ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
@@ -658,7 +718,7 @@ function App(){
             <button class="rowx" disabled=${isBusy("delstore_"+s.id)} onClick=${()=>deleteStore(s)}>${isBusy("delstore_"+s.id)?html`<${Spin} g=${true}/>`:"\ud83d\uddd1"}</button>
           </div>`)}
         <button class="primary sm" disabled=${isBusy("savestores")} onClick=${saveStores}>${isBusy("savestores")?html`<${Spin}/>Saving\u2026`:"Save names & colors"}</button>
-        <div class="lead" style="margin-top:10px">Add a store</div>
+        <div class="lead" style="margin-top:10px">Add a Store</div>
         <input class="tin" placeholder="Store name" value=${newStore.name} onInput=${e=>setNewStore(n=>({...n,name:e.target.value}))} />
         <div class="pickrow">
           <div class="swatches">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(newStore.color===c?" on":"")} style=${"background:"+c} onClick=${()=>setNewStore(n=>({...n,color:c}))}></button>`)}</div>
@@ -671,7 +731,7 @@ function App(){
     ${delStore?html`
       <div class="scrim" onClick=${()=>setDelStore(null)}></div>
       <div class="sheet tall">
-        <div class="lead">Deleting ${delStore.name}</div>
+        <div class="sheethead"><div class="lead">Deleting ${delStore.name}</div><button class="sheetx" onClick=${()=>setDelStore(null)} aria-label="Close">\u00d7</button></div>
         <div class="hint">These items are only at ${delStore.name}. Pick a new store for each, or leave blank to move it to Unsorted.</div>
         ${orphansOf(delStore.id).map(it=>html`
           <div class="orow">
@@ -691,9 +751,11 @@ function App(){
       <div class="menuscrim" onClick=${()=>setMenu(false)}></div>
       <div class="dropdown">
         <div class="ddemail">${user.email}</div>
-        <button class="ddm" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>Staples</button>
-        <button class="ddm" onClick=${()=>{setMenu(false);openStores();}}>Manage stores</button>
-        <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage categories</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);setStapleSel({});setStaplesModal(true);}}>Regularly Bought</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openRecipes();}}>Recipe Ideas</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);setKitchenModal(true);}}>Kitchen Staples</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openStores();}}>Manage Stores</button>
+        <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage Categories</button>
         <div class="ddsep"></div>
         <button class="ddm ddout" onClick=${()=>signOut(auth)}>Sign out</button>
       </div>`:null}
@@ -702,13 +764,13 @@ function App(){
     ${catModal?html`
       <div class="scrim" onClick=${()=>setCatModal(false)}></div>
       <div class="sheet tall">
-        <div class="lead">Categories</div>
+        <div class="sheethead"><div class="lead">Categories</div><button class="sheetx" onClick=${()=>setCatModal(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">This order is how items group on the List and Shop pages. \u201cUnsorted\u201d always stays last.</div>
         ${catDraft.map(c=>html`
           <div class="serow"><span class="flex">${c}</span>
             <button class="rowx" disabled=${isBusy("delcat_"+c)} onClick=${()=>deleteCat(c)}>${isBusy("delcat_"+c)?html`<${Spin} g=${true}/>`:"\ud83d\uddd1"}</button>
           </div>`)}
-        <div class="lead" style="margin-top:10px">Add a category</div>
+        <div class="lead" style="margin-top:10px">Add a Category</div>
         <input class="tin" placeholder="e.g. Clothes" value=${newCat} onInput=${e=>setNewCat(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")addCat();}} />
         <button class="primary" disabled=${!newCat.trim()||isBusy("addcat")} onClick=${addCat}>${isBusy("addcat")?html`<${Spin}/>Adding\u2026`:"Add category"}</button>
       </div>`:null}
@@ -717,10 +779,10 @@ function App(){
     ${staplesModal?html`
       <div class="scrim" onClick=${()=>setStaplesModal(false)}></div>
       <div class="sheet tall">
-        <div class="lead">Staples</div>
+        <div class="sheethead"><div class="lead">Regularly Bought</div><button class="sheetx" onClick=${()=>setStaplesModal(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Your regulars. Tick what you need this week and add them all at once. Items already on the list are greyed out.</div>
         <input class="tin" placeholder="Add a staple (e.g. milk)" value=${newStaple} onInput=${e=>setNewStaple(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter")addNewStaple();}} />
-        ${staples.length===0?html`<div class="hint">No staples yet \u2014 star items on the List or in Purchase History to keep them here.</div>`:null}
+        ${staples.length===0?html`<div class="hint">Nothing here yet \u2014 star items on the List or in Purchase History to keep them here.</div>`:null}
         ${staples.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>{
           const onList=list.some(i=>i.key===s.name);
           return html`<div class=${"strow"+(onList?" off":"")} onClick=${()=>{ if(!onList) setStapleSel(v=>({...v,[s.id]:!v[s.id]})); }}>
@@ -737,7 +799,7 @@ function App(){
     ${assignList.length>0?html`
       <div class="scrim" onClick=${commitAssign}></div>
       <div class="sheet tall">
-        <div class="lead">Which store${assignList.length>1?"s":""}?</div>
+        <div class="sheethead"><div class="lead">Which store${assignList.length>1?"s":""}?</div><button class="sheetx" onClick=${commitAssign} aria-label="Close">\u00d7</button></div>
         <div class="hint">Couldn't auto-detect where to buy ${assignList.length>1?"these":"this"}. Pick a store (and category) \u2014 I'll remember for next time.</div>
         ${assignList.map((it,idx)=>html`
           <div class="arow">
@@ -757,13 +819,76 @@ function App(){
     ${retModal?html`
       <div class="scrim" onClick=${()=>setRetModal(null)}></div>
       <div class="sheet">
-        <div class="lead">Return \u201c${retModal.name}\u201d</div>
+        <div class="sheethead"><div class="lead">Return \u201c${retModal.name}\u201d</div><button class="sheetx" onClick=${()=>setRetModal(null)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Bought at ${sname(retModal.store)} on ${retModal.date}. Enter the return-by date \u2014 a red banner appears within 5 days of it.</div>
         <input class="tin" type="date" value=${retDate} min=${todayISO()} onInput=${e=>setRetDate(e.target.value)} />
         <label class="attachbtn">${retFile?("\u2713 "+retFile.name):"\ud83d\udcce Attach receipt / QR / label \u2014 image or PDF (optional)"}
           <input type="file" accept="image/*,application/pdf" onChange=${e=>setRetFile(e.target.files[0]||null)} />
         </label>
         <button class="primary" disabled=${!retDate||isBusy("confirmret")} onClick=${confirmReturn}>${isBusy("confirmret")?html`<${Spin}/>Saving\u2026`:"Mark for return"}</button>
+      </div>`:null}
+
+    <!-- kitchen staples -->
+    ${kitchenModal?html`
+      <div class="scrim" onClick=${()=>setKitchenModal(false)}></div>
+      <div class="sheet">
+        <div class="sheethead"><div class="lead">Kitchen Staples</div><button class="sheetx" onClick=${()=>setKitchenModal(false)} aria-label="Close">\u00d7</button></div>
+        <div class="hint">Things you always have \u2014 recipes assume these are on hand so you don't list them each time.</div>
+        <div class="tagedit ringlist">
+          ${kitchen.map(t=>html`<span class="tagchip on">${t}<button class="tagx" onClick=${()=>removeKitchen(t)}>\u00d7</button></span>`)}
+        </div>
+        <textarea class="tin ta short" placeholder="salt, flour, eggs, honey\u2026 (comma or new line)" value=${kDraft} onInput=${e=>setKDraft(e.target.value)}></textarea>
+        <button class="primary" disabled=${isBusy("kitchen")||!kDraft.trim()} onClick=${addKitchen}>${isBusy("kitchen")?html`<${Spin}/>`:"Add"}</button>
+      </div>`:null}
+
+    <!-- recipe ideas -->
+    ${recipeOpen?html`
+      <div class="recipepage">
+        <div class="rphead">
+          <div class="rptitle">Recipe Ideas</div>
+          <button class="sheetx" onClick=${()=>setRecipeOpen(false)} aria-label="Close">\u00d7</button>
+        </div>
+        <div class="rpbody">
+          <div class="hint">Your ingredients (comma or line separated)</div>
+          <textarea class="tin ta" placeholder="e.g. paneer, spinach, tomato, rice\nor one per line" value=${rIng} onInput=${e=>setRIng(e.target.value)}></textarea>
+          ${recentProduce.length>0?html`
+            <div class="hint">Bought in the last 30 days \u2014 tap what you still have</div>
+            <div class="chiprow">${recentProduce.map(p=>html`<button class="selchip" onClick=${()=>addIngChip(p)}>+ ${p}</button>`)}</div>`:null}
+          ${kitchen.length?html`<details class="assumed"><summary>Assumed on hand (${kitchen.length}) \u00b7 <button class="linkbtn" onClick=${e=>{e.preventDefault();setKitchenModal(true);}}>edit</button></summary><div class="assumedlist">${kitchen.join(", ")}</div></details>`:html`<div class="assumed"><button class="linkbtn" onClick=${()=>setKitchenModal(true)}>Set kitchen staples</button> (salt, flour, eggs\u2026) so recipes assume them.</div>`}
+          <div class="hint">Cuisine (optional)</div>
+          <div class="chiprow">${CUISINES.map(c=>html`<button class=${"selchip"+(rCuisine===c?" on":"")} onClick=${()=>setRCuisine(rCuisine===c?"":c)}>${c}</button>`)}</div>
+          <div class="hint">Meal type</div>
+          <div class="chiprow">${MEALS.map(([v,l])=>html`<button class=${"selchip"+(rMeal===v?" on":"")} onClick=${()=>setRMeal(v)}>${l}</button>`)}</div>
+          <div class="hint">Who's it for?</div>
+          <div class="chiprow">${WHO.map(([v,l])=>html`<button class=${"selchip"+(rWho===v?" on":"")} onClick=${()=>setRWho(v)}>${l}</button>`)}</div>
+          ${rWho==="baby"?html`
+            <div class="hint">Baby's age</div>
+            <div class="chiprow">${AGES.map(([v,l])=>html`<button class=${"selchip"+(rAge===v?" on":"")} onClick=${()=>setRAge(v)}>${l}</button>`)}</div>`:null}
+          <div class="hint">Flavor (optional)</div>
+          <div class="chiprow">${FLAVORS.map(f=>html`<button class=${"selchip"+(rFlavors.has(f)?" on":"")} onClick=${()=>toggleFlavor(f)}>${f}</button>`)}</div>
+          <button class="primary" disabled=${rLoading||!rIng.trim()||(rWho==="baby"&&!rAge)} onClick=${getRecipes}>${rLoading?html`<${Spin}/>Thinking\u2026`:"Get ideas"}</button>
+          ${rErr?html`<div class="rerr">${rErr}</div>`:null}
+          ${rResults?(rResults.length===0
+            ? html`<div class="empty"><div class="big">No ideas came back</div>Try adding a couple more ingredients.</div>`
+            : html`
+              ${rWho==="baby"?html`<div class="babycaveat">Ideas only \u2014 check textures for your baby's age, and avoid honey under 12 months, added salt/sugar, and choking hazards. If they keep refusing food, it's worth checking with your pediatrician.</div>`:null}
+              <div class="rlist">
+                ${rResults.map((d,i)=>html`
+                  <div class="panel">
+                    <button class="phead" onClick=${()=>setROpen(o=>({...o,[i]:!o[i]}))}>
+                      <span class="ptitle">${d.name}</span>
+                      <span class="pright">${d.minutes?html`<span class="pcount">${d.minutes} min</span>`:null}<span class=${"pcaret"+(rOpen[i]?" up":"")}>\u25be</span></span>
+                    </button>
+                    ${rOpen[i]?html`<div class="pbody rbody">
+                      ${(d.need&&d.need.length)?html`<div class="needline">You'd need: ${d.need.join(", ")}</div>`:html`<div class="haveline">You have everything for this</div>`}
+                      ${(d.ingredientsUsed&&d.ingredientsUsed.length)?html`<div class="rsec"><h5>Uses</h5><p>${d.ingredientsUsed.join(", ")}</p></div>`:null}
+                      ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
+                      ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
+                      ${d.oneExtra?html`<div class="rsec rextra"><h5>With one more item</h5><p>${d.oneExtra}</p></div>`:null}
+                    </div>`:null}
+                  </div>`)}
+              </div>`):null}
+        </div>
       </div>`:null}
 
     <!-- image viewer -->
