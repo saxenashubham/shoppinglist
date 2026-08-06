@@ -326,3 +326,8 @@ details.assumed summary::-webkit-details-marker{display:none}
 details.assumed summary::before{content:"\25b8 ";color:var(--muted)}
 details.assumed[open] summary::before{content:"\25be ";}
 .assumedlist{margin-top:6px;font-size:13px;color:var(--muted);line-height:1.4}
+.shopaddrow{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.shopaddrow .flex{flex:1}
+.pager{display:flex;align-items:center;justify-content:center;gap:14px;margin:14px 0 4px}
+.pager .pnum{font-size:13px;font-weight:700;color:var(--muted)}
+.pager .ghost{border:1.5px solid var(--line);border-radius:8px;padding:8px 12px}

@@ -120,6 +120,7 @@ function App(){
   const [purch,setPurch]=useState([]);
   const [page,setPage]=useState("list");
   const [checkedIn,setCheckedIn]=useState(null);
+  const [shopAdd,setShopAdd]=useState("");
   const [draft,setDraft]=useState("");
   const [parsing,setParsing]=useState(false);
   const [review,setReview]=useState([]);
@@ -182,8 +183,11 @@ function App(){
   const [viewImg,setViewImg]=useState(null);
   const [pendingOnly,setPendingOnly]=useState(false);
   const [pFilterStore,setPFilterStore]=useState("all");
+  const [pFilterCat,setPFilterCat]=useState("all");
   const [pFilterRange,setPFilterRange]=useState("30");
   const [sortBy,setSortBy]=useState("date");
+  const [sortDir,setSortDir]=useState("desc");
+  const [histPage,setHistPage]=useState(1);
   const [cats,setCats]=useState(CATS);
   const [kitchen,setKitchen]=useState([]);
   const [catModal,setCatModal]=useState(false);
@@ -264,9 +268,13 @@ function App(){
     const toAdd=[], needAssign=[];
     for(const n of names){
       if(existing.has(n)) continue; existing.add(n);
-      const meta=lookup(merged,n)||learned[n]||{stores:[],category:"Unsorted"};
-      if((meta.stores||[]).length) toAdd.push({name:n,stores:meta.stores,category:meta.category||"Unsorted"});
-      else needAssign.push({name:n,stores:[],category:meta.category||"Unsorted"});
+      const known=lookup(dict,n);
+      if(known && (known.stores||[]).length){
+        toAdd.push({name:n,stores:known.stores,category:known.category||"Unsorted"});
+      } else {
+        const cat=(learned[n]&&learned[n].category)||(known&&known.category)||"Unsorted";
+        needAssign.push({name:n,stores:[],category:cat});
+      }
     }
     if(toAdd.length){
       await run("additems", async ()=>{
@@ -323,6 +331,21 @@ function App(){
   async function removeCurrentItem(){ await run("removeitem", ()=>deleteDoc(doc(db,"shoppinglist_list",itemModal.id))); setItemModal(null); }
   const removeRow=it=>run("rm_"+it.id, ()=>deleteDoc(doc(db,"shoppinglist_list",it.id)));
 
+  async function addInShop(){
+    const t=shopAdd.trim(); if(!t||!checkedIn) return;
+    if(list.some(i=>i.key.toLowerCase()===t.toLowerCase()&&(i.stores||[]).includes(checkedIn))){ setShopAdd(""); flash(t+" is already on this list"); return; }
+    const known=lookup(dict,t);
+    let category=(known&&known.category)||"Unsorted";
+    let stores=known?((known.stores||[]).includes(checkedIn)?known.stores:[...(known.stores||[]),checkedIn]):[checkedIn];
+    if(!known){ try{ const learned=await routeUnknowns([t],stores); const m=Object.values(learned)[0]; if(m&&m.category) category=m.category; }catch{} }
+    await run("shopadd", async ()=>{
+      const b=writeBatch(db);
+      b.set(doc(db,"shoppinglist_dictionary",slug(t)),{name:t,stores,category},{merge:true});
+      b.set(doc(collection(db,"shoppinglist_list")),{key:t,name:t,stores:[...stores],category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+      await b.commit();
+    });
+    setShopAdd(""); flash(t+" added to "+sname(checkedIn));
+  }
   async function checkOut(){
     const store=checkedIn;
     const done=list.filter(i=>i.stores.includes(store)&&i.checked);
@@ -489,17 +512,24 @@ function App(){
   const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+checkedIn),[shopItems,collapsed,checkedIn,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
 
+  const pCatOf=name=>((lookup(dict,name)||{}).category)||"Unsorted";
   const filteredPurch=useMemo(()=>{
     let ps=purch.slice();
     if(pendingOnly) ps=ps.filter(p=>p.status==="returning");
     if(pFilterStore!=="all") ps=ps.filter(p=>p.store===pFilterStore);
+    if(pFilterCat!=="all") ps=ps.filter(p=>pCatOf(p.name)===pFilterCat);
     if(pFilterRange!=="all"){const lim=parseInt(pFilterRange,10);
       ps=ps.filter(p=>{const d=(new Date()-new Date(p.date+"T00:00:00"))/86400000; return d<=lim;});}
     return ps.sort((a,b)=>{
       if(sortBy==="store"){const c=sname(a.store).localeCompare(sname(b.store)); if(c) return c;}
-      return (b.date||"").localeCompare(a.date||"");
+      const c=(a.date||"").localeCompare(b.date||"");
+      return sortDir==="asc"?c:-c;
     });
-  },[purch,pendingOnly,pFilterStore,pFilterRange,sortBy,stores]);
+  },[purch,pendingOnly,pFilterStore,pFilterCat,pFilterRange,sortBy,sortDir,stores,dict]);
+  const HIST_PER=20;
+  const histPages=Math.max(1,Math.ceil(filteredPurch.length/HIST_PER));
+  const histSlice=useMemo(()=>filteredPurch.slice((histPage-1)*HIST_PER,histPage*HIST_PER),[filteredPurch,histPage]);
+  useEffect(()=>{ setHistPage(1); },[pendingOnly,pFilterStore,pFilterCat,pFilterRange,sortBy,sortDir]);
 
   const check=html`<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
@@ -606,6 +636,10 @@ function App(){
         <span class="cistore">${lsq(scolor(checkedIn),sname(checkedIn))}At ${sname(checkedIn)}</span>
         <button class="ghost ciout" onClick=${checkOut}>Check out</button>
       </div>
+      <div class="shopaddrow">
+        <input class="tin flex" placeholder=${"Add to "+sname(checkedIn)+"\u2026"} value=${shopAdd} onInput=${e=>setShopAdd(e.target.value)} onKeyDown=${e=>{if(e.key==="Enter"){e.preventDefault();addInShop();}}} />
+        <button class="primary sm" disabled=${isBusy("shopadd")||!shopAdd.trim()} onClick=${addInShop}>${isBusy("shopadd")?html`<${Spin}/>`:"Add"}</button>
+      </div>
       ${shopGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing left for ${sname(checkedIn)}</div>You're all done here \u2014 check out.</div>`
         : shopGroups.map(g=>{
@@ -630,18 +664,26 @@ function App(){
         <select class="sel sm" value=${sortBy} onChange=${e=>setSortBy(e.target.value)}>
           <option value="date">Sort: Date</option><option value="store">Sort: Store</option>
         </select>
+        <button class="fbtn" onClick=${()=>setSortDir(d=>d==="desc"?"asc":"desc")}>${sortDir==="desc"?"Newest first":"Oldest first"}</button>
         <select class="sel sm" value=${pFilterStore} onChange=${e=>setPFilterStore(e.target.value)}>
           <option value="all">All stores</option>
           ${stores.map(s=>html`<option value=${s.id}>${s.name}</option>`)}
         </select>
+        <select class="sel sm" value=${pFilterCat} onChange=${e=>setPFilterCat(e.target.value)}>
+          <option value="all">All categories</option>
+          ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
+        </select>
         <select class="sel sm" value=${pFilterRange} onChange=${e=>setPFilterRange(e.target.value)}>
           <option value="7">7 days</option><option value="30">30 days</option>
-          <option value="90">90 days</option><option value="all">All time</option>
+          <option value="90">90 days</option><option value="180">6 months</option>
+          <option value="365">1 year</option><option value="all">All time</option>
         </select>
       </div>
       ${filteredPurch.length===0
         ? html`<div class="empty"><div class="big">No purchases</div>Items you mark bought show up here.</div>`
-        : filteredPurch.map(p=>{
+        : html`
+          <div class="listcount">${filteredPurch.length} item${filteredPurch.length===1?"":"s"}${histPages>1?html` \u00b7 <span class="lcmuted">page ${histPage} of ${histPages}</span>`:null}</div>
+          ${histSlice.map(p=>{
             const ret=p.status==="returning"; const d=ret?daysUntil(p.returnByDate):null;
             const rk="ret_"+p.id, kk="keep_"+p.id;
             return html`
@@ -661,7 +703,13 @@ function App(){
                   <button class="ghost mut" disabled=${isBusy(kk)} onClick=${()=>resolveReturn(p.id,"kept",kk)}>${isBusy(kk)?html`<${Spin} g=${true}/>`:"Keeping"}</button>`:null}
                 ${(p.status==="returned"||p.status==="kept")?html`<span class="tag">${p.status}</span>`:null}
               </div>
-            </div>`;})}`:null}
+            </div>`;})}
+          ${histPages>1?html`
+            <div class="pager">
+              <button class="ghost" disabled=${histPage<=1} onClick=${()=>setHistPage(p=>Math.max(1,p-1))}>\u2190 Prev</button>
+              <span class="pnum">${histPage} / ${histPages}</span>
+              <button class="ghost" disabled=${histPage>=histPages} onClick=${()=>setHistPage(p=>Math.min(histPages,p+1))}>Next \u2192</button>
+            </div>`:null}`}`:null}
     `}
 
     <!-- add items -->
