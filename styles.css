@@ -347,3 +347,7 @@ details.assumed[open] summary::before{content:"\25be ";}
 .panel.drophot{outline:2px dashed var(--green);outline-offset:1px}
 .panel.drophot .phead{background:var(--green-tint)}
 .expandbtn.on{background:var(--green);color:#fff;border-radius:999px;padding:4px 12px}
+.listtools{align-items:center}
+.listtools .listcount{flex:1;text-align:center;margin:0}
+.listtools .expandbtn,.listtools .ltspacer{flex:0 0 auto;min-width:74px}
+.listtools .expandbtn:last-child{text-align:right}

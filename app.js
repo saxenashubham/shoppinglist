@@ -622,6 +622,22 @@ function App(){
     if(migDone!==false||loading||_migRan) return;
     _migRan=true; cleanupNames(true);
   },[migDone,loading,list,dict,purch]);
+  useEffect(()=>{
+    let sx=0,sy=0,st=0,skip=false;
+    const SKIP=".chiprow,.tagbar,.picker,.msellist,.dropdown,.sheet,.scrim,.recipepage,.dragghost,input,textarea,select";
+    const ts=e=>{ const t=e.touches&&e.touches[0]; if(!t) return; sx=t.clientX; sy=t.clientY; st=Date.now();
+      skip=!!(e.target&&e.target.closest&&e.target.closest(SKIP)); };
+    const te=e=>{ if(skip||drag) return; const t=e.changedTouches&&e.changedTouches[0]; if(!t) return;
+      const dx=t.clientX-sx, dy=t.clientY-sy, dt=Date.now()-st;
+      if(dt<600 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*2){
+        const order=["list","shop","history"], i=order.indexOf(page);
+        if(dx<0 && i<order.length-1) setPage(order[i+1]);
+        else if(dx>0 && i>0) setPage(order[i-1]);
+      }};
+    document.addEventListener("touchstart",ts,{passive:true});
+    document.addEventListener("touchend",te,{passive:true});
+    return ()=>{ document.removeEventListener("touchstart",ts); document.removeEventListener("touchend",te); };
+  },[page,drag]);
 
   const check=html`<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
@@ -690,11 +706,11 @@ function App(){
         </div>`:null}
       ${list.length>0?html`
         <div class="listtools">
+          <button class=${"expandbtn"+(reorder?" on":"")} onClick=${()=>setReorder(r=>!r)}>${reorder?"Done":"Reorder"}</button>
           <span class="listcount">${(exclTags.size||exclStores.size)
             ? html`${listGroups.reduce((a,g)=>a+g.items.length,0)} <span class="lcmuted">of ${list.length} items</span>`
             : html`${list.length} item${list.length===1?"":"s"}`}</span>
-          ${listGroups.length>1?html`<button class="expandbtn" onClick=${()=>setAllCats(listGroups.map(g=>g.key),listGroups.every(g=>g.open))}>${listGroups.every(g=>g.open)?"Collapse all":"Expand all"}</button>`:null}
-          <button class=${"expandbtn"+(reorder?" on":"")} onClick=${()=>setReorder(r=>!r)}>${reorder?"Done":"Reorder"}</button>
+          ${listGroups.length>1?html`<button class="expandbtn" onClick=${()=>setAllCats(listGroups.map(g=>g.key),listGroups.every(g=>g.open))}>${listGroups.every(g=>g.open)?"Collapse all":"Expand all"}</button>`:html`<span class="ltspacer"></span>`}
         </div>`:null}
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
