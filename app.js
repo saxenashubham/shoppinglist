@@ -23,6 +23,7 @@ const AGES=[["u6","Under 6 mo"],["6_9","6-9 mo"],["9_12","9-12 mo"],["12_18","12
 const FLAVORS=["Sweet","Savory","Spicy","Mild"];
 const MEALS=[["snack","Snack"],["meal","Meal"],["soft","Soft (sore gums)"]];
 let _migRan=false;
+let _lp=null, _suppressClick=false;
 const CUISINES=["Indian","Chinese","Thai","Italian","Mexican","American"];
 
 const appFb = initializeApp(shoppingListConfig);
@@ -99,13 +100,16 @@ async function routeUnknowns(names, stores){
 }
 
 function Spin({g}){ return html`<span class=${"spin"+(g?" g":"")}></span>`; }
-function Panel({title, count, color, open, onToggle, children}){
+function Panel({title, count, color, open, onToggle, children, dropCat, onGrip, hot}){
   return html`
-    <div class="panel">
-      <button class="phead" onClick=${onToggle}>
-        <span class="ptitle">${color?html`<i class="pdot" style=${"background:"+color}></i>`:null}${title}</span>
-        <span class="pright"><span class="pcount">${count}</span><span class=${"caret"+(open?" up":"")}>\u25be</span></span>
-      </button>
+    <div class=${"panel"+(hot?" drophot":"")} data-drop-cat=${dropCat||null}>
+      <div class="phead">
+        ${onGrip?html`<button class="grip catgrip" onPointerDown=${onGrip} onClick=${e=>e.stopPropagation()} aria-label="Reorder category">\u2261</button>`:null}
+        <button class="pheadmain" onClick=${onToggle}>
+          <span class="ptitle">${color?html`<i class="pdot" style=${"background:"+color}></i>`:null}${title}</span>
+          <span class="pright"><span class="pcount">${count}</span><span class=${"caret"+(open?" up":"")}>\u25be</span></span>
+        </button>
+      </div>
       ${open?html`<div class="pbody">${children}</div>`:null}
     </div>`;
 }
@@ -219,6 +223,60 @@ function App(){
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
   const sname=id=>(stores.find(s=>s.id===id)||{}).name||id;
   const toggleCat=key=>setCollapsed(c=>({...c,[key]:!c[key]}));
+  const [drag,setDrag]=useState(null);
+  const [ghost,setGhost]=useState(null);
+  const [overCat,setOverCat]=useState(null);
+  const [reorder,setReorder]=useState(false);
+  function pointCat(x,y){ const el=document.elementFromPoint(x,y); const h=el&&el.closest?el.closest("[data-drop-cat]"):null; return h?h.getAttribute("data-drop-cat"):null; }
+  function runDrag(kind, data, x0, y0){
+    setDrag({kind}); setGhost({x:x0,y:y0,label:data.label}); setOverCat(pointCat(x0,y0));
+    const move=ev=>{
+      setGhost(g=>g?{...g,x:ev.clientX,y:ev.clientY}:g);
+      setOverCat(pointCat(ev.clientX,ev.clientY));
+      const m=72,H=window.innerHeight; if(ev.clientY<m) window.scrollBy(0,-14); else if(ev.clientY>H-m) window.scrollBy(0,14);
+    };
+    const up=ev=>{
+      window.removeEventListener("pointermove",move); window.removeEventListener("pointerup",up);
+      setGhost(null); setDrag(null); setOverCat(null);
+      const target=pointCat(ev.clientX,ev.clientY);
+      if(target){ if(kind==="item"){ if(target!==data.cat) recategorize(data.item,target); } else if(kind==="cat"){ if(target!==data.cat) reorderCat(data.cat,target); } }
+    };
+    window.addEventListener("pointermove",move,{passive:false});
+    window.addEventListener("pointerup",up);
+  }
+  function startDrag(kind, data, e){
+    if(e.button!==undefined && e.button!==0) return;
+    e.preventDefault(); e.stopPropagation();
+    runDrag(kind,data,e.clientX,e.clientY);
+  }
+  function itemPointerDown(it, e){
+    if(reorder) return;
+    if(e.button!==undefined && e.button!==0) return;
+    const x0=e.clientX,y0=e.clientY;
+    _lp={x0,y0,fired:false,timer:setTimeout(()=>{
+      _lp.fired=true; _suppressClick=true; setReorder(true);
+      runDrag("item",{item:it,cat:it.category||"Unsorted",label:it.name},x0,y0);
+    },420)};
+  }
+  function itemPointerMove(e){ if(!_lp||_lp.fired) return; if(Math.abs(e.clientX-_lp.x0)>10||Math.abs(e.clientY-_lp.y0)>10){ clearTimeout(_lp.timer); _lp=null; } }
+  function itemPointerUp(){ if(_lp&&!_lp.fired){ clearTimeout(_lp.timer); _lp=null; } }
+  function openItemGuarded(it){ if(_suppressClick){ _suppressClick=false; return; } openItem(it); }
+  async function recategorize(it, cat){
+    await run("recat_"+it.id, async ()=>{
+      const b=writeBatch(db);
+      b.set(doc(db,"shoppinglist_list",it.id),{category:cat},{merge:true});
+      b.set(doc(db,"shoppinglist_dictionary",slug(it.name)),{name:it.name,category:cat},{merge:true});
+      await b.commit();
+    });
+    flash(it.name+" \u2192 "+cat);
+  }
+  async function reorderCat(from, to){
+    if(from==="Unsorted"||to==="Unsorted") return;
+    const base=cats.filter(c=>c!=="Unsorted"&&c!==from);
+    const idx=base.indexOf(to); if(idx<0) return;
+    base.splice(idx,0,from);
+    await run("reordercat", ()=>setDoc(cfgDoc(),{categories:base},{merge:true}));
+  }
   const setAllCats=(keys,collapse)=>setCollapsed(c=>{const n={...c}; keys.forEach(k=>{ if(collapse) n[k]=true; else delete n[k]; }); return n;});
   const isBusy=k=>!!busy[k];
   async function run(key, fn){ setBusy(b=>({...b,[key]:true}));
@@ -576,6 +634,7 @@ function App(){
 
   return html`
     <div class="top">
+      ${ghost?html`<div class="dragghost" style=${"left:"+ghost.x+"px;top:"+ghost.y+"px"}>${ghost.label}</div>`:null}
       <div class="brand"><img class="brandicon" src="./icon-192.png" alt="" />Basketly<span class="dot">.</span></div>
       <button class="hbtn" onClick=${()=>setMenu(true)} aria-label="Menu">\u2630</button>
     </div>
@@ -635,17 +694,21 @@ function App(){
             ? html`${listGroups.reduce((a,g)=>a+g.items.length,0)} <span class="lcmuted">of ${list.length} items</span>`
             : html`${list.length} item${list.length===1?"":"s"}`}</span>
           ${listGroups.length>1?html`<button class="expandbtn" onClick=${()=>setAllCats(listGroups.map(g=>g.key),listGroups.every(g=>g.open))}>${listGroups.every(g=>g.open)?"Collapse all":"Expand all"}</button>`:null}
+          <button class=${"expandbtn"+(reorder?" on":"")} onClick=${()=>setReorder(r=>!r)}>${reorder?"Done":"Reorder"}</button>
         </div>`:null}
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
         : list.length===0
         ? html`<div class="empty"><div class="big">List is empty</div>Tap \u201cAdd items\u201d or pull from \u2605 Regularly Bought.</div>`
         : listGroups.map(g=>html`
-          <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}>
+          <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}
+            dropCat=${g.cat} hot=${!!drag && overCat===g.cat}
+            onGrip=${(reorder && g.cat!=="Unsorted")?(e=>startDrag("cat",{cat:g.cat,label:g.cat},e)):null}>
             ${g.items.map(it=>html`
-              <div class="lrow">
+              <div class="lrow" onPointerDown=${e=>itemPointerDown(it,e)} onPointerMove=${itemPointerMove} onPointerUp=${itemPointerUp}>
+                ${reorder?html`<button class="grip itemgrip" onPointerDown=${e=>startDrag("item",{item:it,cat:it.category||"Unsorted",label:it.name},e)} onClick=${e=>e.stopPropagation()} aria-label="Drag to recategorize">\u2261</button>`:null}
                 <button class=${"rowstar lead-star"+(isStaple(it.name)?" on":"")} onClick=${()=>toggleStaple(it.name,it.stores,it.category)}>${isBusy("star_"+slug(it.name))?html`<${Spin} g=${true}/>`:(isStaple(it.name)?"\u2605":"\u2606")}</button>
-                <button class="lmain" onClick=${()=>openItem(it)}>
+                <button class="lmain" onClick=${()=>openItemGuarded(it)}>
                   <span class="lmid">
                     <span class="lname">${it.name}</span>
                     ${(it.tags&&it.tags.length)?html`<span class="ltags">${it.tags.map(t=>html`<span class="ltag">${t}</span>`)}</span>`:null}
