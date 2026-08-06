@@ -22,6 +22,7 @@ const WHO=[["baby","Baby"],["kids","Kids"],["adults","Adults"],["family","Whole 
 const AGES=[["u6","Under 6 mo"],["6_9","6-9 mo"],["9_12","9-12 mo"],["12_18","12-18 mo"],["18_36","18-36 mo"]];
 const FLAVORS=["Sweet","Savory","Spicy","Mild"];
 const MEALS=[["snack","Snack"],["meal","Meal"],["soft","Soft (sore gums)"]];
+let _migRan=false;
 const CUISINES=["Indian","Chinese","Thai","Italian","Mexican","American"];
 
 const appFb = initializeApp(shoppingListConfig);
@@ -59,6 +60,7 @@ const SEED_DICT = {
 };
 
 const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"").slice(0,120) || "x";
+const titleCase = s => (s||"").split(" ").map(w=>w?w.charAt(0).toUpperCase()+w.slice(1):w).join(" ");
 const todayISO = () => new Date().toISOString().slice(0,10);
 const daysUntil = iso => Math.ceil((new Date(iso+"T00:00:00") - new Date(new Date().toDateString())) / 86400000);
 const cfgDoc = () => doc(db,"shoppinglist_config","app");
@@ -68,14 +70,14 @@ function normalizeName(raw){
   s = s.replace(/^[-*\d\).\s]+/,"");
   s = s.replace(/\b(\d+(\.\d+)?)\s*(lbs?|lb|kg|g|oz|gallons?|gal|dozen|packs?|pkt|bunch(es)?|cans?|bottles?|boxes?|bags?)\b/gi,"");
   s = s.replace(/\b(a|an|some|few|couple of|one|two|three|four|five)\b/gi,"");
-  return s.replace(/\s+/g," ").trim();
+  return titleCase(s.replace(/\s+/g," ").trim());
 }
 const splitBlob = t => t.split(/\r?\n|,|;|\u2022|\band\b/i).map(x=>x.trim()).filter(Boolean).map(normalizeName).filter(Boolean);
 function lookup(dict, name){
-  if(dict[name]) return dict[name];
-  for(const k of Object.keys(dict)){
-    if(name===k) return dict[k];
-    if(name.length>3 && (name.includes(k)||k.includes(name))) return dict[k];
+  const nl=(name||"").toLowerCase();
+  for(const k of Object.keys(dict)){ if(nl===k.toLowerCase()) return dict[k]; }
+  for(const k of Object.keys(dict)){ const kl=k.toLowerCase();
+    if(nl.length>3 && (nl.includes(kl)||kl.includes(nl))) return dict[k];
   }
   return null;
 }
@@ -114,6 +116,7 @@ function Loader({label}){
 function App(){
   const [user,setUser]=useState(undefined);
   const [loading,setLoading]=useState(true);
+  const [migDone,setMigDone]=useState(null);
   const [stores,setStores]=useState(DEFAULT_STORES);
   const [dict,setDict]=useState({});
   const [list,setList]=useState([]);
@@ -243,7 +246,8 @@ function App(){
     const u1=onSnapshot(cfgDoc(),d=>{if(d.exists()){const dd=d.data();
       if(dd.stores){setStores(dd.stores);}
       if(dd.categories&&dd.categories.length) setCats(dd.categories.includes("Unsorted")?dd.categories:[...dd.categories,"Unsorted"]);
-      if(dd.kitchen) setKitchen(dd.kitchen);}});
+      if(dd.kitchen) setKitchen(dd.kitchen);
+      setMigDone(!!dd.nameCaseV1);}});
     const u2=onSnapshot(collection(db,"shoppinglist_dictionary"),snap=>{const m={};snap.forEach(d=>{const x=d.data();m[x.name||d.id]={stores:x.stores||[],category:x.category||"Unsorted"};});setDict(m);});
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
     const u4=onSnapshot(collection(db,"shoppinglist_purchased"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setPurch(a);});
@@ -264,10 +268,10 @@ function App(){
       setParsing(false);
     }
     const merged={...dict,...learned};
-    const existing=new Set(list.map(i=>i.key));
+    const existing=new Set(list.map(i=>(i.key||"").toLowerCase()));
     const toAdd=[], needAssign=[];
     for(const n of names){
-      if(existing.has(n)) continue; existing.add(n);
+      if(existing.has(n.toLowerCase())) continue; existing.add(n.toLowerCase());
       const known=lookup(dict,n);
       if(known && (known.stores||[]).length){
         toAdd.push({name:n,stores:known.stores,category:known.category||"Unsorted"});
@@ -332,7 +336,7 @@ function App(){
   const removeRow=it=>run("rm_"+it.id, ()=>deleteDoc(doc(db,"shoppinglist_list",it.id)));
 
   async function addInShop(){
-    const t=shopAdd.trim(); if(!t||!checkedIn) return;
+    const t=normalizeName(shopAdd); if(!t||!checkedIn) return;
     if(list.some(i=>i.key.toLowerCase()===t.toLowerCase()&&(i.stores||[]).includes(checkedIn))){ setShopAdd(""); flash(t+" is already on this list"); return; }
     const known=lookup(dict,t);
     let category=(known&&known.category)||"Unsorted";
@@ -345,6 +349,31 @@ function App(){
       await b.commit();
     });
     setShopAdd(""); flash(t+" added to "+sname(checkedIn));
+  }
+  async function cleanupNames(silent){
+    const work=async ()=>{
+      const ops=[];
+      const groups={};
+      for(const it of list){ const tc=titleCase(it.name||it.key||""); const k=tc.toLowerCase(); (groups[k]||(groups[k]={tc,items:[]})).items.push(it); }
+      for(const g of Object.values(groups)){
+        const items=g.items;
+        const stores=[...new Set(items.flatMap(i=>i.stores||[]))];
+        const tags=[...new Set(items.flatMap(i=>i.tags||[]))];
+        const keep=items[0];
+        ops.push({t:"set",ref:doc(db,"shoppinglist_list",keep.id),data:{key:g.tc,name:g.tc,stores,tags}});
+        for(const dup of items.slice(1)) ops.push({t:"del",ref:doc(db,"shoppinglist_list",dup.id)});
+      }
+      for(const nm of Object.keys(dict)) ops.push({t:"set",ref:doc(db,"shoppinglist_dictionary",slug(nm)),data:{name:titleCase(nm)}});
+      for(const p of purch){ const tc=titleCase(p.name||""); if(tc!==p.name) ops.push({t:"set",ref:doc(db,"shoppinglist_purchased",p.id),data:{name:tc}}); }
+      for(let i=0;i<ops.length;i+=400){
+        const b=writeBatch(db);
+        for(const o of ops.slice(i,i+400)){ o.t==="del"?b.delete(o.ref):b.set(o.ref,o.data,{merge:true}); }
+        await b.commit();
+      }
+      await setDoc(cfgDoc(),{nameCaseV1:true},{merge:true});
+    };
+    if(silent){ try{ await work(); }catch(e){} return; }
+    await run("cleanup", work); flash("Names cleaned up");
   }
   async function checkOut(){
     const store=checkedIn;
@@ -530,6 +559,10 @@ function App(){
   const histPages=Math.max(1,Math.ceil(filteredPurch.length/HIST_PER));
   const histSlice=useMemo(()=>filteredPurch.slice((histPage-1)*HIST_PER,histPage*HIST_PER),[filteredPurch,histPage]);
   useEffect(()=>{ setHistPage(1); },[pendingOnly,pFilterStore,pFilterCat,pFilterRange,sortBy,sortDir]);
+  useEffect(()=>{
+    if(migDone!==false||loading||_migRan) return;
+    _migRan=true; cleanupNames(true);
+  },[migDone,loading,list,dict,purch]);
 
   const check=html`<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
