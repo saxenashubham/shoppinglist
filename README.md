@@ -55,3 +55,4 @@ store at once — that's the buy-anywhere/clear-everywhere behavior.
 ## What's intentionally not built yet
 Per-store submit timing, receipt/history log, push notifications, editable store UI (edit the
 `shoppinglist_config/app` doc directly for now). Add after real use tells you they're worth it.
+
