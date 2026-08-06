@@ -219,6 +219,7 @@ function App(){
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
   const sname=id=>(stores.find(s=>s.id===id)||{}).name||id;
   const toggleCat=key=>setCollapsed(c=>({...c,[key]:!c[key]}));
+  const setAllCats=(keys,collapse)=>setCollapsed(c=>{const n={...c}; keys.forEach(k=>{ if(collapse) n[k]=true; else delete n[k]; }); return n;});
   const isBusy=k=>!!busy[k];
   async function run(key, fn){ setBusy(b=>({...b,[key]:true}));
     try{ await fn(); } catch(e){ flash("Something went wrong"); }
@@ -629,9 +630,12 @@ function App(){
             </div>`:null}
         </div>`:null}
       ${list.length>0?html`
-        <div class="listcount">${(exclTags.size||exclStores.size)
-          ? html`${listGroups.reduce((a,g)=>a+g.items.length,0)} <span class="lcmuted">of ${list.length} items</span>`
-          : html`${list.length} item${list.length===1?"":"s"}`}</div>`:null}
+        <div class="listtools">
+          <span class="listcount">${(exclTags.size||exclStores.size)
+            ? html`${listGroups.reduce((a,g)=>a+g.items.length,0)} <span class="lcmuted">of ${list.length} items</span>`
+            : html`${list.length} item${list.length===1?"":"s"}`}</span>
+          ${listGroups.length>1?html`<button class="expandbtn" onClick=${()=>setAllCats(listGroups.map(g=>g.key),listGroups.every(g=>g.open))}>${listGroups.every(g=>g.open)?"Collapse all":"Expand all"}</button>`:null}
+        </div>`:null}
       ${(exclTags.size||exclStores.size)&&listGroups.length===0
         ? html`<div class="empty"><div class="big">Nothing matches</div>No items for these filters \u2014 reset with \u201cAll\u201d.</div>`
         : list.length===0
