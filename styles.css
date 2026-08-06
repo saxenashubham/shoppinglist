@@ -37,7 +37,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .ghost.mut{color:var(--muted)}
 
 /* collapsible panels */
-.panel{background:var(--card);border:1.5px solid var(--line);border-radius:var(--r);margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow)}
+.panel{background:var(--card);border:1.5px solid var(--line);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
 .phead{width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 14px}
 .ptitle{font-family:var(--display);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);font-weight:600;display:flex;align-items:center;gap:8px}
 .pdot{width:9px;height:9px;border-radius:3px}
@@ -332,6 +332,7 @@ details.assumed[open] summary::before{content:"\25be ";}
 .pager .pnum{font-size:13px;font-weight:700;color:var(--muted)}
 .pager .ghost{border:1.5px solid var(--line);border-radius:8px;padding:8px 12px}
 /* clearer caret + expand/collapse-all */
+.phead{border-bottom:1px solid var(--line);background:#f1efe6}
 .phead .caret{color:var(--ink);font-size:15px;line-height:1;flex:0 0 auto;display:inline-block;transition:transform .18s}
 .phead .caret.up{transform:rotate(180deg)}
 .phead{border-bottom:1px solid transparent}
