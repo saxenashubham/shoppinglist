@@ -580,6 +580,16 @@ function App(){
     });
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
+  const shopOrder=useMemo(()=>{
+    const cnt=Object.fromEntries(stores.map(s=>[s.id, list.filter(i=>i.stores.includes(s.id)&&!i.checked).length]));
+    const idx=Object.fromEntries(stores.map((s,i)=>[s.id,i]));
+    return stores.slice().sort((a,b)=>{
+      const ca=cnt[a.id], cb=cnt[b.id];
+      if((ca>0)!==(cb>0)) return cb>0?1:-1;
+      if(cb!==ca) return cb-ca;
+      return idx[a.id]-idx[b.id];
+    }).map(s=>({...s,_n:cnt[s.id]}));
+  },[stores,list]);
   const recentProduce=useMemo(()=>{
     const cut=Date.now()-30*864e5, seen=new Set(), out=[];
     purch.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).forEach(p=>{
@@ -744,8 +754,8 @@ function App(){
     ${page==="shop"?( !checkedIn ? html`
       <div class="pickhead">Which store are you at?</div>
       <div class="picker">
-        ${stores.map(s=>{const n=list.filter(i=>i.stores.includes(s.id)&&!i.checked).length;
-          return html`<button class="storecard" style=${"--sc:"+s.color} onClick=${()=>setCheckedIn(s.id)}>
+        ${shopOrder.map(s=>{const n=s._n;
+          return html`<button class=${"storecard"+(n===0?" empty":"")} style=${"--sc:"+s.color} onClick=${()=>setCheckedIn(s.id)}>
             <span class="scname">${s.name}</span>
             <span class="sccount">${n} item${n===1?"":"s"}</span>
           </button>`;})}
