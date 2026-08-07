@@ -357,3 +357,4 @@ details.assumed[open] summary::before{content:"\25be ";}
 .catopt{padding:13px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:15px;font-weight:600;color:var(--ink);text-align:left}
 .catopt.on{border-color:var(--green);background:var(--green-tint);color:var(--green-deep)}
 .catopt:active{background:#f2f5f0}
+.storecard.empty{opacity:.5}
