@@ -227,6 +227,7 @@ function App(){
   const [ghost,setGhost]=useState(null);
   const [overCat,setOverCat]=useState(null);
   const [reorder,setReorder]=useState(false);
+  const [catPick,setCatPick]=useState(null);
   function pointCat(x,y){ const el=document.elementFromPoint(x,y); const h=el&&el.closest?el.closest("[data-drop-cat]"):null; return h?h.getAttribute("data-drop-cat"):null; }
   function runDrag(kind, data, x0, y0){
     setDrag({kind}); setGhost({x:x0,y:y0,label:data.label}); setOverCat(pointCat(x0,y0));
@@ -724,15 +725,18 @@ function App(){
               <div class="lrow" onPointerDown=${e=>itemPointerDown(it,e)} onPointerMove=${itemPointerMove} onPointerUp=${itemPointerUp}>
                 ${reorder?html`<button class="grip itemgrip" onPointerDown=${e=>startDrag("item",{item:it,cat:it.category||"Unsorted",label:it.name},e)} onClick=${e=>e.stopPropagation()} aria-label="Drag to recategorize">\u2261</button>`:null}
                 <button class=${"rowstar lead-star"+(isStaple(it.name)?" on":"")} onClick=${()=>toggleStaple(it.name,it.stores,it.category)}>${isBusy("star_"+slug(it.name))?html`<${Spin} g=${true}/>`:(isStaple(it.name)?"\u2605":"\u2606")}</button>
-                <button class="lmain" onClick=${()=>openItemGuarded(it)}>
+                <div class="lmain" onClick=${()=>openItemGuarded(it)}>
                   <span class="lmid">
                     <span class="lname">${it.name}</span>
-                    ${(it.tags&&it.tags.length)?html`<span class="ltags">${it.tags.map(t=>html`<span class="ltag">${t}</span>`)}</span>`:null}
+                    <span class="lmeta">
+                      <span class="catchip" onClick=${e=>{e.stopPropagation();setCatPick(it);}}>${it.category||"Unsorted"}</span>
+                      ${(it.tags||[]).map(t=>html`<span class="ltag">${t}</span>`)}
+                    </span>
                   </span>
                   <span class="lstores">${it.stores.length
                     ? it.stores.map(s=>lsq(scolor(s),sname(s)))
                     : html`<em class="uns">unsorted</em>`}</span>
-                </button>
+                </div>
                 <button class="rowx" onClick=${()=>removeRow(it)}>${isBusy("rm_"+it.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
               </div>`)}
           <//>`)}`:null}
@@ -1003,6 +1007,16 @@ function App(){
         </div>
         <textarea class="tin ta short" placeholder="salt, flour, eggs, honey\u2026 (comma or new line)" value=${kDraft} onInput=${e=>setKDraft(e.target.value)}></textarea>
         <button class="primary" disabled=${isBusy("kitchen")||!kDraft.trim()} onClick=${addKitchen}>${isBusy("kitchen")?html`<${Spin}/>`:"Add"}</button>
+      </div>`:null}
+
+    <!-- quick category picker -->
+    ${catPick?html`
+      <div class="scrim" onClick=${()=>setCatPick(null)}></div>
+      <div class="sheet">
+        <div class="sheethead"><div class="lead">Category \u00b7 ${catPick.name}</div><button class="sheetx" onClick=${()=>setCatPick(null)} aria-label="Close">\u00d7</button></div>
+        <div class="catgrid">
+          ${cats.map(c=>html`<button class=${"catopt"+((catPick.category||"Unsorted")===c?" on":"")} onClick=${()=>{ if(c!==(catPick.category||"Unsorted")) recategorize(catPick,c); setCatPick(null); }}>${c}</button>`)}
+        </div>
       </div>`:null}
 
     <!-- recipe ideas -->
