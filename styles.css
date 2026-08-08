@@ -358,3 +358,4 @@ details.assumed[open] summary::before{content:"\25be ";}
 .catopt.on{border-color:var(--green);background:var(--green-tint);color:var(--green-deep)}
 .catopt:active{background:#f2f5f0}
 .storecard.empty{opacity:.5}
+.chip.mini.addchip{border-style:dashed;color:var(--green);font-weight:700;background:var(--card)}
