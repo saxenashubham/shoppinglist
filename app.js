@@ -445,6 +445,7 @@ function App(){
       }
       for(const nm of Object.keys(dict)) ops.push({t:"set",ref:doc(db,"shoppinglist_dictionary",slug(nm)),data:{name:titleCase(nm)}});
       for(const p of purch){ const tc=titleCase(p.name||""); if(tc!==p.name) ops.push({t:"set",ref:doc(db,"shoppinglist_purchased",p.id),data:{name:tc}}); }
+      for(const s of staples){ const tc=titleCase(s.name||""); if(tc!==s.name) ops.push({t:"set",ref:doc(db,"shoppinglist_staples",s.id),data:{name:tc}}); }
       for(let i=0;i<ops.length;i+=400){
         const b=writeBatch(db);
         for(const o of ops.slice(i,i+400)){ o.t==="del"?b.delete(o.ref):b.set(o.ref,o.data,{merge:true}); }
@@ -652,7 +653,7 @@ function App(){
   useEffect(()=>{
     if(migDone!==false||loading||_migRan) return;
     _migRan=true; cleanupNames(true);
-  },[migDone,loading,list,dict,purch]);
+  },[migDone,loading,list,dict,purch,staples]);
   useEffect(()=>{
     let sx=0,sy=0,st=0,skip=false;
     const SKIP=".chiprow,.tagbar,.picker,.msellist,.dropdown,.sheet,.scrim,.recipepage,.dragghost,input,textarea,select";
