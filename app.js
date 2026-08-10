@@ -547,12 +547,17 @@ function App(){
     setNewStaple("");
   }
   async function addStaplesToList(){
-    const existing=new Set(list.map(i=>i.key));
-    const add=staples.filter(s=>stapleSel[s.id] && !existing.has(s.name));
+    const existing=new Set(list.map(i=>(i.key||"").toLowerCase()));
+    const add=staples.filter(s=>stapleSel[s.id] && !existing.has((s.name||"").toLowerCase()));
     if(!add.length){ setStaplesModal(false); setStapleSel({}); return; }
     await run("addstaples", async ()=>{
       const b=writeBatch(db);
-      add.forEach(s=>b.set(doc(collection(db,"shoppinglist_list")),{key:s.name,name:s.name,stores:[...(s.stores||[])],category:s.category||"Unsorted",checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()}));
+      add.forEach(s=>{
+        const meta=lookup(dict,s.name)||{};
+        const stores=(meta.stores&&meta.stores.length)?meta.stores:(s.stores||[]);
+        const category=meta.category||s.category||"Unsorted";
+        b.set(doc(collection(db,"shoppinglist_list")),{key:s.name,name:s.name,stores:[...stores],category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+      });
       await b.commit();
     });
     setStaplesModal(false); setStapleSel({}); flash(add.length+" added to list");
