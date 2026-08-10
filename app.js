@@ -228,6 +228,8 @@ function App(){
   const [overCat,setOverCat]=useState(null);
   const [reorder,setReorder]=useState(false);
   const [catPick,setCatPick]=useState(null);
+  const [catAdd,setCatAdd]=useState(null);
+  const [storeAdd,setStoreAdd]=useState(null);
   function pointCat(x,y){ const el=document.elementFromPoint(x,y); const h=el&&el.closest?el.closest("[data-drop-cat]"):null; return h?h.getAttribute("data-drop-cat"):null; }
   function runDrag(kind, data, x0, y0){
     setDrag({kind}); setGhost({x:x0,y:y0,label:data.label}); setOverCat(pointCat(x0,y0));
@@ -262,6 +264,24 @@ function App(){
   function itemPointerMove(e){ if(!_lp||_lp.fired) return; if(Math.abs(e.clientX-_lp.x0)>10||Math.abs(e.clientY-_lp.y0)>10){ clearTimeout(_lp.timer); _lp=null; } }
   function itemPointerUp(){ if(_lp&&!_lp.fired){ clearTimeout(_lp.timer); _lp=null; } }
   function openItemGuarded(it){ if(_suppressClick){ _suppressClick=false; return; } openItem(it); }
+  function openAddCat(onDone){ setCatAdd({name:"",onDone}); }
+  async function commitAddCat(){
+    const nm=(catAdd&&catAdd.name||"").trim(); if(!nm) return;
+    const cur=cats.filter(c=>c!=="Unsorted");
+    let finalName=cur.find(c=>c.toLowerCase()===nm.toLowerCase());
+    if(!finalName){ finalName=nm; await run("quickcat",()=>setDoc(cfgDoc(),{categories:[...cur,nm]},{merge:true})); }
+    const done=catAdd.onDone; setCatAdd(null); if(done) done(finalName);
+  }
+  function openAddStore(onDone){ setStoreAdd({name:"",color:STORE_SWATCHES[0],onDone}); }
+  async function commitAddStore(){
+    const nm=(storeAdd&&storeAdd.name||"").trim(); if(!nm) return;
+    const id=slug(nm);
+    if(!stores.some(s=>s.id===id)){
+      const next=[...stores.map(serStore),{id,name:nm,color:storeAdd.color}];
+      await run("quickstore",()=>setDoc(cfgDoc(),{stores:next},{merge:true}));
+    }
+    const done=storeAdd.onDone; setStoreAdd(null); if(done) done(id);
+  }
   async function recategorize(it, cat){
     await run("recat_"+it.id, async ()=>{
       const b=writeBatch(db);
@@ -425,6 +445,7 @@ function App(){
       }
       for(const nm of Object.keys(dict)) ops.push({t:"set",ref:doc(db,"shoppinglist_dictionary",slug(nm)),data:{name:titleCase(nm)}});
       for(const p of purch){ const tc=titleCase(p.name||""); if(tc!==p.name) ops.push({t:"set",ref:doc(db,"shoppinglist_purchased",p.id),data:{name:tc}}); }
+      for(const s of staples){ const tc=titleCase(s.name||""); if(tc!==s.name) ops.push({t:"set",ref:doc(db,"shoppinglist_staples",s.id),data:{name:tc}}); }
       for(let i=0;i<ops.length;i+=400){
         const b=writeBatch(db);
         for(const o of ops.slice(i,i+400)){ o.t==="del"?b.delete(o.ref):b.set(o.ref,o.data,{merge:true}); }
@@ -526,12 +547,17 @@ function App(){
     setNewStaple("");
   }
   async function addStaplesToList(){
-    const existing=new Set(list.map(i=>i.key));
-    const add=staples.filter(s=>stapleSel[s.id] && !existing.has(s.name));
+    const existing=new Set(list.map(i=>(i.key||"").toLowerCase()));
+    const add=staples.filter(s=>stapleSel[s.id] && !existing.has((s.name||"").toLowerCase()));
     if(!add.length){ setStaplesModal(false); setStapleSel({}); return; }
     await run("addstaples", async ()=>{
       const b=writeBatch(db);
-      add.forEach(s=>b.set(doc(collection(db,"shoppinglist_list")),{key:s.name,name:s.name,stores:[...(s.stores||[])],category:s.category||"Unsorted",checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()}));
+      add.forEach(s=>{
+        const meta=lookup(dict,s.name)||{};
+        const stores=(meta.stores&&meta.stores.length)?meta.stores:(s.stores||[]);
+        const category=meta.category||s.category||"Unsorted";
+        b.set(doc(collection(db,"shoppinglist_list")),{key:s.name,name:s.name,stores:[...stores],category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+      });
       await b.commit();
     });
     setStaplesModal(false); setStapleSel({}); flash(add.length+" added to list");
@@ -580,6 +606,16 @@ function App(){
     });
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
+  const shopOrder=useMemo(()=>{
+    const cnt=Object.fromEntries(stores.map(s=>[s.id, list.filter(i=>i.stores.includes(s.id)&&!i.checked).length]));
+    const idx=Object.fromEntries(stores.map((s,i)=>[s.id,i]));
+    return stores.slice().sort((a,b)=>{
+      const ca=cnt[a.id], cb=cnt[b.id];
+      if((ca>0)!==(cb>0)) return cb>0?1:-1;
+      if(cb!==ca) return cb-ca;
+      return idx[a.id]-idx[b.id];
+    }).map(s=>({...s,_n:cnt[s.id]}));
+  },[stores,list]);
   const recentProduce=useMemo(()=>{
     const cut=Date.now()-30*864e5, seen=new Set(), out=[];
     purch.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).forEach(p=>{
@@ -622,7 +658,7 @@ function App(){
   useEffect(()=>{
     if(migDone!==false||loading||_migRan) return;
     _migRan=true; cleanupNames(true);
-  },[migDone,loading,list,dict,purch]);
+  },[migDone,loading,list,dict,purch,staples]);
   useEffect(()=>{
     let sx=0,sy=0,st=0,skip=false;
     const SKIP=".chiprow,.tagbar,.picker,.msellist,.dropdown,.sheet,.scrim,.recipepage,.dragghost,input,textarea,select";
@@ -744,8 +780,8 @@ function App(){
     ${page==="shop"?( !checkedIn ? html`
       <div class="pickhead">Which store are you at?</div>
       <div class="picker">
-        ${stores.map(s=>{const n=list.filter(i=>i.stores.includes(s.id)&&!i.checked).length;
-          return html`<button class="storecard" style=${"--sc:"+s.color} onClick=${()=>setCheckedIn(s.id)}>
+        ${shopOrder.map(s=>{const n=s._n;
+          return html`<button class=${"storecard"+(n===0?" empty":"")} style=${"--sc:"+s.color} onClick=${()=>setCheckedIn(s.id)}>
             <span class="scname">${s.name}</span>
             <span class="sccount">${n} item${n===1?"":"s"}</span>
           </button>`;})}
@@ -859,12 +895,14 @@ function App(){
       <div class="sheet">
         <div class="sheethead"><div class="lead">${itemModal.name}</div><button class="sheetx" onClick=${()=>setItemModal(null)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Category</div>
-        <select class="sel" value=${editCat} onChange=${e=>setEditCat(e.target.value)}>
+        <select class="sel" value=${editCat} onChange=${e=>{ if(e.target.value==="__newcat__"){ openAddCat(n=>setEditCat(n)); } else setEditCat(e.target.value); }}>
           ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
+          <option value="__newcat__">+ New category\u2026</option>
         </select>
         <div class="hint">Stores</div>
         <div class="chiprow">${stores.map(s=>html`<button class=${"chip mini"+(editStores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleEditStore(s.id)}>
-          ${lsq(s.color,s.name)}${s.name}</button>`)}</div>
+          ${lsq(s.color,s.name)}${s.name}</button>`)}
+          <button class="chip mini addchip" onClick=${()=>openAddStore(id=>toggleEditStore(id))}>+ New store</button></div>
         <div class="hint">Tags (for whom)</div>
         <div class="tagedit">
           ${editTags.map(t=>html`<span class="tagchip on">${t}<button class="tagx" onClick=${()=>removeTag(t)}>\u00d7</button></span>`)}
@@ -972,12 +1010,14 @@ function App(){
         ${assignList.map((it,idx)=>html`
           <div class="arow">
             <div class="aname">${it.name}</div>
-            <select class="sel sm" value=${it.category} onChange=${e=>updateAssign(idx,{category:e.target.value})}>
+            <select class="sel sm" value=${it.category} onChange=${e=>{ if(e.target.value==="__newcat__"){ openAddCat(n=>updateAssign(idx,{category:n})); } else updateAssign(idx,{category:e.target.value}); }}>
               ${cats.map(c=>html`<option value=${c}>${c}</option>`)}
+              <option value="__newcat__">+ New category\u2026</option>
             </select>
             <div class="chiprow">
               ${stores.map(s=>html`<button class=${"chip mini"+(it.stores.includes(s.id)?" pick":"")} style=${"--sc:"+s.color} onClick=${()=>toggleAssignStore(idx,s.id)}>
                 ${lsq(s.color,s.name)}${s.name}</button>`)}
+              <button class="chip mini addchip" onClick=${()=>openAddStore(id=>toggleAssignStore(idx,id))}>+ New store</button>
             </div>
           </div>`)}
         <button class="primary" disabled=${isBusy("assign")} onClick=${commitAssign}>${isBusy("assign")?html`<${Spin}/>Adding\u2026`:"Add to list"}</button>
@@ -1017,6 +1057,30 @@ function App(){
         <div class="catgrid">
           ${cats.map(c=>html`<button class=${"catopt"+((catPick.category||"Unsorted")===c?" on":"")} onClick=${()=>{ if(c!==(catPick.category||"Unsorted")) recategorize(catPick,c); setCatPick(null); }}>${c}</button>`)}
         </div>
+        <button class="linkbtn" style="margin-top:12px" onClick=${()=>{const it=catPick; setCatPick(null); openAddCat(n=>recategorize(it,n));}}>+ New category</button>
+      </div>`:null}
+
+    <!-- quick create: category -->
+    ${catAdd?html`
+      <div class="scrim" onClick=${()=>setCatAdd(null)}></div>
+      <div class="sheet">
+        <div class="sheethead"><div class="lead">New category</div><button class="sheetx" onClick=${()=>setCatAdd(null)} aria-label="Close">\u00d7</button></div>
+        <input class="tin" placeholder="Category name" value=${catAdd.name} onInput=${e=>setCatAdd(a=>({...a,name:e.target.value}))} onKeyDown=${e=>{if(e.key==="Enter"){e.preventDefault();commitAddCat();}}} />
+        <button class="primary" disabled=${!catAdd.name.trim()||isBusy("quickcat")} onClick=${commitAddCat}>${isBusy("quickcat")?html`<${Spin}/>Adding\u2026`:"Add & select"}</button>
+      </div>`:null}
+
+    <!-- quick create: store (name + color) -->
+    ${storeAdd?html`
+      <div class="scrim" onClick=${()=>setStoreAdd(null)}></div>
+      <div class="sheet">
+        <div class="sheethead"><div class="lead">New store</div><button class="sheetx" onClick=${()=>setStoreAdd(null)} aria-label="Close">\u00d7</button></div>
+        <input class="tin" placeholder="Store name" value=${storeAdd.name} onInput=${e=>setStoreAdd(a=>({...a,name:e.target.value}))} />
+        <div class="hint">Color</div>
+        <div class="pickrow">
+          <div class="swatches">${STORE_SWATCHES.map(c=>html`<button class=${"sw"+(storeAdd.color===c?" on":"")} style=${"background:"+c} onClick=${()=>setStoreAdd(a=>({...a,color:c}))}></button>`)}</div>
+          <input class="colorin" type="color" value=${storeAdd.color} onInput=${e=>setStoreAdd(a=>({...a,color:e.target.value}))} />
+        </div>
+        <button class="primary" disabled=${!storeAdd.name.trim()||isBusy("quickstore")} onClick=${commitAddStore}>${isBusy("quickstore")?html`<${Spin}/>Adding\u2026`:"Add & select"}</button>
       </div>`:null}
 
     <!-- recipe ideas -->
