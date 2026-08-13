@@ -181,17 +181,20 @@ function App(){
   }
   // strip a leading quantity + measure word so "2 cloves garlic" -> "Garlic"; local only, never touches the global parser
   const cleanNeed=s=>normalizeName(String(s||"").replace(/^\s*[\d\u00bc\u00bd\u00be\u2153\u2154\u215b/.\s-]*\s*(cups?|cloves?|tbsps?|tablespoons?|tsps?|teaspoons?|pinch(es)?|cans?|sprigs?|slices?|pieces?|sticks?|heads?|bunch(es)?|handfuls?)\b\s*(of\s+)?/i,""));
+  // a recipe ingredient counts as a kitchen staple if a staple name matches it whole-word (so "salt to taste" is filtered, "olive oil" is not filtered by staple "oil" unless "oil" is a standalone word)
+  const ingMatchesKitchen=n=>{ const c=cleanNeed(n).toLowerCase().trim(); if(!c) return false; const w=c.split(/\s+/); return kitchen.some(k=>{ const kl=(k||"").toLowerCase().trim(); return kl && (c===kl || w.includes(kl)); }); };
+  // what a recipe offers to add: its buy-list (need) if present, else all ingredients used, minus assumed kitchen staples
+  function recipeAddSource(d){ const need=d.need||[]; const used=d.ingredientsUsed||[]; return (need.length?need:used).filter(n=>!ingMatchesKitchen(n)); }
   function openAddRecipe(d){
-    const need=d.need||[]; const used=d.ingredientsUsed||[];
-    const source=used.length?used:need;
+    const need=d.need||[];
+    const source=recipeAddSource(d);
     const isNeed=n=>need.some(x=>(x||"").toLowerCase()===(n||"").toLowerCase());
     const sel={}; source.forEach(n=>{ sel[n]={on:isNeed(n), name:cleanNeed(n)||n}; });
     setNeedSel(sel); setAddRecipe(d);
   }
   async function addRecipeNeeds(){
     const d=addRecipe; if(!d){ return; }
-    const need=d.need||[]; const used=d.ingredientsUsed||[];
-    const source=used.length?used:need;
+    const source=recipeAddSource(d);
     const chosen=source
       .filter(n=>needSel[n]&&needSel[n].on)
       .map(n=>titleCase((needSel[n].name||"").trim()))
@@ -746,7 +749,7 @@ function App(){
     const saved=isSavedRecipe(d.name);
     const need=d.need||[];
     const used=d.ingredientsUsed||[];
-    const source=used.length?used:need;
+    const source=recipeAddSource(d);
     const have=used.filter(u=>!need.some(n=>(n||"").toLowerCase()===(u||"").toLowerCase()));
     const adding=addRecipe && addRecipe.name===d.name;
     return html`
