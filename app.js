@@ -182,12 +182,17 @@ function App(){
   // strip a leading quantity + measure word so "2 cloves garlic" -> "Garlic"; local only, never touches the global parser
   const cleanNeed=s=>normalizeName(String(s||"").replace(/^\s*[\d\u00bc\u00bd\u00be\u2153\u2154\u215b/.\s-]*\s*(cups?|cloves?|tbsps?|tablespoons?|tsps?|teaspoons?|pinch(es)?|cans?|sprigs?|slices?|pieces?|sticks?|heads?|bunch(es)?|handfuls?)\b\s*(of\s+)?/i,""));
   function openAddRecipe(d){
-    const sel={}; (d.need||[]).forEach(n=>{ sel[n]={on:true,name:cleanNeed(n)||n}; });
+    const need=d.need||[]; const used=d.ingredientsUsed||[];
+    const source=used.length?used:need;
+    const isNeed=n=>need.some(x=>(x||"").toLowerCase()===(n||"").toLowerCase());
+    const sel={}; source.forEach(n=>{ sel[n]={on:isNeed(n), name:cleanNeed(n)||n}; });
     setNeedSel(sel); setAddRecipe(d);
   }
   async function addRecipeNeeds(){
     const d=addRecipe; if(!d){ return; }
-    const chosen=(d.need||[])
+    const need=d.need||[]; const used=d.ingredientsUsed||[];
+    const source=used.length?used:need;
+    const chosen=source
       .filter(n=>needSel[n]&&needSel[n].on)
       .map(n=>titleCase((needSel[n].name||"").trim()))
       .filter(Boolean);
@@ -741,6 +746,7 @@ function App(){
     const saved=isSavedRecipe(d.name);
     const need=d.need||[];
     const used=d.ingredientsUsed||[];
+    const source=used.length?used:need;
     const have=used.filter(u=>!need.some(n=>(n||"").toLowerCase()===(u||"").toLowerCase()));
     const adding=addRecipe && addRecipe.name===d.name;
     return html`
@@ -758,10 +764,10 @@ function App(){
           ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
           ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
           ${d.oneExtra?html`<div class="rsec rextra"><h5>With one more item</h5><p>${d.oneExtra}</p></div>`:null}
-          ${need.length?(adding
+          ${source.length?(adding
             ? html`<div class="addneed">
-                <div class="hint">Untick anything you already have. Edit a name if it looks off \u2014 the ticked ones go on your list.</div>
-                ${need.map(n=>{ const row=needSel[n]||{on:true,name:n}; return html`<div class="needrow">
+                <div class="hint">Tick what you need to buy \u2014 edit a name if it looks off. Ticked items go on your list.</div>
+                ${source.map(n=>{ const row=needSel[n]||{on:false,name:n}; return html`<div class="needrow">
                   <button class=${"box sm"+(row.on?" on":"")} onClick=${()=>setNeedSel(s=>({...s,[n]:{...(s[n]||{name:n}),on:!(s[n]&&s[n].on)}}))}>${row.on?check:null}</button>
                   <div class="neededit">
                     <input class="needinput" value=${row.name} onInput=${e=>{const v=e.target.value; setNeedSel(s=>({...s,[n]:{...(s[n]||{on:true}),name:v}}));}} />
