@@ -169,7 +169,47 @@ function App(){
     setRLoading(false);
   }
   const addIngChip=name=>{const t=(name||"").trim(); if(!t) return; setRIng(cur=>{const have=cur.split(/[\n,]+/).map(x=>x.trim().toLowerCase()); if(have.includes(t.toLowerCase())) return cur; return cur.trim()?cur.replace(/\s*$/,"")+", "+t:t;});};
-  function openRecipes(){ setRecipeOpen(true); }
+  function openRecipes(){ setRecipeTab("new"); setRecipeOpen(true); }
+  // ---- saved recipes (favorites) + add-ingredients-to-list ----
+  const isSavedRecipe=name=>savedRecipes.some(r=>(r.name||"").toLowerCase()===(name||"").toLowerCase());
+  function toggleSaveRecipe(d){
+    const id=slug(d.name);
+    const ref=doc(db,"shoppinglist_recipes",id);
+    return run("saverec_"+id, ()=> isSavedRecipe(d.name)
+      ? deleteDoc(ref)
+      : setDoc(ref,{name:d.name,minutes:d.minutes||null,need:d.need||[],ingredientsUsed:d.ingredientsUsed||[],steps:d.steps||[],notes:d.notes||"",oneExtra:d.oneExtra||"",ts:serverTimestamp()}));
+  }
+  // strip a leading quantity + measure word so "2 cloves garlic" -> "Garlic"; local only, never touches the global parser
+  const cleanNeed=s=>normalizeName(String(s||"").replace(/^\s*[\d\u00bc\u00bd\u00be\u2153\u2154\u215b/.\s-]*\s*(cups?|cloves?|tbsps?|tablespoons?|tsps?|teaspoons?|pinch(es)?|cans?|sprigs?|slices?|pieces?|sticks?|heads?|bunch(es)?|handfuls?)\b\s*(of\s+)?/i,""));
+  function openAddRecipe(d){
+    const sel={}; (d.need||[]).forEach(n=>{ sel[n]={on:true,name:cleanNeed(n)||n}; });
+    setNeedSel(sel); setAddRecipe(d);
+  }
+  async function addRecipeNeeds(){
+    const d=addRecipe; if(!d){ return; }
+    const chosen=(d.need||[])
+      .filter(n=>needSel[n]&&needSel[n].on)
+      .map(n=>titleCase((needSel[n].name||"").trim()))
+      .filter(Boolean);
+    if(!chosen.length){ setAddRecipe(null); return; }
+    const existing=new Set(list.map(i=>(i.key||"").toLowerCase()));
+    const toAdd=[];
+    for(const nm of chosen){
+      if(existing.has(nm.toLowerCase())) continue; existing.add(nm.toLowerCase());
+      const known=lookup(dict,nm);
+      toAdd.push({name:nm,stores:(known&&known.stores)||[],category:(known&&known.category)||"Unsorted"});
+    }
+    if(!toAdd.length){ setAddRecipe(null); flash("Already on your list"); return; }
+    await run("addrecipe", async ()=>{
+      const b=writeBatch(db);
+      for(const it of toAdd){
+        if(it.stores.length) b.set(doc(db,"shoppinglist_dictionary",slug(it.name)),{name:it.name,stores:it.stores,category:it.category},{merge:true});
+        b.set(doc(collection(db,"shoppinglist_list")),{key:it.name,name:it.name,stores:[...it.stores],category:it.category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+      }
+      await b.commit();
+    });
+    setAddRecipe(null); flash(toAdd.length===1?`"${toAdd[0].name}" added`:`${toAdd.length} added to list`);
+  }
   async function addKitchen(){
     const parts=kDraft.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
     if(!parts.length){return;}
@@ -218,6 +258,10 @@ function App(){
   const [rOpen,setROpen]=useState({});
   const [kitchenModal,setKitchenModal]=useState(false);
   const [kDraft,setKDraft]=useState("");
+  const [savedRecipes,setSavedRecipes]=useState([]);
+  const [recipeTab,setRecipeTab]=useState("new");   // "new" | "saved"
+  const [addRecipe,setAddRecipe]=useState(null);     // dish whose ingredients are being added
+  const [needSel,setNeedSel]=useState({});           // {needString: bool}
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
@@ -334,7 +378,8 @@ function App(){
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
     const u4=onSnapshot(collection(db,"shoppinglist_purchased"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setPurch(a);});
     const u5=onSnapshot(collection(db,"shoppinglist_staples"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setStaples(a);});
-    return()=>{u1();u2();u3();u4();u5();};
+    const u6=onSnapshot(collection(db,"shoppinglist_recipes"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setSavedRecipes(a);});
+    return()=>{u1();u2();u3();u4();u5();u6();};
   },[user]);
 
   async function signIn(){try{await signInWithPopup(auth,new GoogleAuthProvider());}catch{flash("Sign-in failed");}}
@@ -689,6 +734,50 @@ function App(){
   },[page,drag]);
 
   const check=html`<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+  function dishCard(d, okey){
+    const open=!!rOpen[okey];
+    const onToggle=()=>setROpen(o=>({...o,[okey]:!o[okey]}));
+    const saved=isSavedRecipe(d.name);
+    const need=d.need||[];
+    const used=d.ingredientsUsed||[];
+    const have=used.filter(u=>!need.some(n=>(n||"").toLowerCase()===(u||"").toLowerCase()));
+    const adding=addRecipe && addRecipe.name===d.name;
+    return html`
+      <div class="panel">
+        <div class="phead rdhead">
+          <button class="pheadmain" onClick=${onToggle}>
+            <span class="ptitle">${d.name}</span>
+            <span class="pright">${d.minutes?html`<span class="pcount">${d.minutes} min</span>`:null}<span class=${"pcaret"+(open?" up":"")}>\u25be</span></span>
+          </button>
+          <button class=${"recstar"+(saved?" on":"")} onClick=${()=>toggleSaveRecipe(d)} aria-label=${saved?"Unsave recipe":"Save recipe"}>${isBusy("saverec_"+slug(d.name))?html`<${Spin} g=${true}/>`:(saved?"\u2605":"\u2606")}</button>
+        </div>
+        ${open?html`<div class="pbody rbody">
+          ${used.length?html`<div class="haveline">On hand: ${have.length} of ${used.length}${have.length?" \u00b7 "+have.join(", "):""}</div>`:null}
+          ${need.length?html`<div class="needline">To buy: ${need.join(", ")}</div>`:html`<div class="haveline">You have everything for this</div>`}
+          ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
+          ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
+          ${d.oneExtra?html`<div class="rsec rextra"><h5>With one more item</h5><p>${d.oneExtra}</p></div>`:null}
+          ${need.length?(adding
+            ? html`<div class="addneed">
+                <div class="hint">Untick anything you already have. Edit a name if it looks off \u2014 the ticked ones go on your list.</div>
+                ${need.map(n=>{ const row=needSel[n]||{on:true,name:n}; return html`<div class="needrow">
+                  <button class=${"box sm"+(row.on?" on":"")} onClick=${()=>setNeedSel(s=>({...s,[n]:{...(s[n]||{name:n}),on:!(s[n]&&s[n].on)}}))}>${row.on?check:null}</button>
+                  <div class="neededit">
+                    <input class="needinput" value=${row.name} onInput=${e=>{const v=e.target.value; setNeedSel(s=>({...s,[n]:{...(s[n]||{on:true}),name:v}}));}} />
+                    ${n!==row.name?html`<span class="needraw">from \u201c${n}\u201d</span>`:null}
+                  </div>
+                </div>`})}
+                <div class="addneedbtns">
+                  <button class="ghost" onClick=${()=>setAddRecipe(null)}>Cancel</button>
+                  <button class="primary sm" disabled=${isBusy("addrecipe")||!Object.values(needSel).some(v=>v&&v.on&&(v.name||"").trim())} onClick=${addRecipeNeeds}>${isBusy("addrecipe")?html`<${Spin}/>Adding\u2026`:"Add ticked to list"}</button>
+                </div>
+              </div>`
+            : html`<button class="primary sm addneedbtn" onClick=${()=>openAddRecipe(d)}>Add ingredients to list</button>`
+          ):null}
+        </div>`:null}
+      </div>`;
+  }
 
   if(user===undefined) return html`<div class="gate"><div class="brand">Basketly<span class="dot">.</span></div><${Loader} label="Starting\u2026"/></div>`;
   if(user===null) return html`<div class="gate">
@@ -1104,6 +1193,11 @@ function App(){
           <button class="sheetx" onClick=${()=>setRecipeOpen(false)} aria-label="Close">\u00d7</button>
         </div>
         <div class="rpbody">
+          <div class="rtabs">
+            <button class=${recipeTab==="new"?"on":""} onClick=${()=>setRecipeTab("new")}>Get ideas</button>
+            <button class=${recipeTab==="saved"?"on":""} onClick=${()=>setRecipeTab("saved")}>Saved${savedRecipes.length?" ("+savedRecipes.length+")":""}</button>
+          </div>
+          ${recipeTab==="new"?html`
           <div class="hint">Your ingredients (comma or line separated)</div>
           <textarea class="tin ta" placeholder="e.g. paneer, spinach, tomato, rice\nor one per line" value=${rIng} onInput=${e=>setRIng(e.target.value)}></textarea>
           ${recentProduce.length>0?html`
@@ -1128,21 +1222,15 @@ function App(){
             : html`
               ${rWho==="baby"?html`<div class="babycaveat">Ideas only \u2014 check textures for your baby's age, and avoid honey under 12 months, added salt/sugar, and choking hazards. If they keep refusing food, it's worth checking with your pediatrician.</div>`:null}
               <div class="rlist">
-                ${rResults.map((d,i)=>html`
-                  <div class="panel">
-                    <button class="phead" onClick=${()=>setROpen(o=>({...o,[i]:!o[i]}))}>
-                      <span class="ptitle">${d.name}</span>
-                      <span class="pright">${d.minutes?html`<span class="pcount">${d.minutes} min</span>`:null}<span class=${"pcaret"+(rOpen[i]?" up":"")}>\u25be</span></span>
-                    </button>
-                    ${rOpen[i]?html`<div class="pbody rbody">
-                      ${(d.need&&d.need.length)?html`<div class="needline">You'd need: ${d.need.join(", ")}</div>`:html`<div class="haveline">You have everything for this</div>`}
-                      ${(d.ingredientsUsed&&d.ingredientsUsed.length)?html`<div class="rsec"><h5>Uses</h5><p>${d.ingredientsUsed.join(", ")}</p></div>`:null}
-                      ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
-                      ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
-                      ${d.oneExtra?html`<div class="rsec rextra"><h5>With one more item</h5><p>${d.oneExtra}</p></div>`:null}
-                    </div>`:null}
-                  </div>`)}
+                ${rResults.map((d,i)=>dishCard(d,i))}
               </div>`):null}
+          `:html`
+          ${savedRecipes.length===0
+            ? html`<div class="empty"><div class="big">No saved recipes</div>Tap the \u2606 on any idea to keep it here.</div>`
+            : html`<div class="rlist">
+                ${savedRecipes.slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(r=>dishCard(r,"s:"+r.id))}
+              </div>`}
+          `}
         </div>
       </div>`:null}
 

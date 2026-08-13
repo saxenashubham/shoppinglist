@@ -359,3 +359,24 @@ details.assumed[open] summary::before{content:"\25be ";}
 .catopt:active{background:#f2f5f0}
 .storecard.empty{opacity:.5}
 .chip.mini.addchip{border-style:dashed;color:var(--green);font-weight:700;background:var(--card)}
+/* ---- recipe favorites: tabs, save star, add-ingredients checklist ---- */
+.rtabs{display:flex;gap:4px;background:#ece7db;border-radius:10px;padding:4px;margin-bottom:14px}
+.rtabs button{flex:1;padding:9px 0;border-radius:7px;font-weight:600;font-size:14px;color:var(--muted);transition:background .15s,color .15s}
+.rtabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.rdhead{display:flex;align-items:center}
+.rdhead .pheadmain{flex:1;min-width:0}
+.recstar{flex:0 0 auto;width:46px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:19px;color:#c9a21e}
+.recstar.on{color:#e8a91e}
+.addneedbtn{width:100%;margin-top:12px}
+.addneed{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.addneed .hint{margin-bottom:8px}
+.needrow{width:100%;display:flex;align-items:flex-start;gap:11px;padding:9px 2px;border-bottom:1px solid #f1ede2;text-align:left}
+.needrow:last-of-type{border-bottom:none}
+.needrow .box.sm{margin-top:2px;flex:0 0 auto}
+.neededit{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.needinput{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-family:var(--body);font-size:15px;color:var(--ink);background:#fff}
+.needinput:focus{outline:none;border-color:var(--green)}
+.needraw{font-size:11px;color:var(--muted);font-weight:500;padding-left:2px}
+.addneedbtns{display:flex;gap:8px;align-items:center;margin-top:12px}
+.addneedbtns .ghost{flex:0 0 auto}
+.addneedbtns .primary.sm{flex:1}
