@@ -347,7 +347,7 @@ function App(){
   const setAllCats=(keys,collapse)=>setCollapsed(c=>{const n={...c}; keys.forEach(k=>{ if(collapse) n[k]=true; else delete n[k]; }); return n;});
   const isBusy=k=>!!busy[k];
   async function run(key, fn){ setBusy(b=>({...b,[key]:true}));
-    try{ await fn(); } catch(e){ flash("Something went wrong"); }
+    try{ await fn(); } catch(e){ console.error("[run:"+key+"]",e); flash("Error: "+((e&&(e.code||e.message))||"unknown")); }
     finally{ setBusy(b=>{const n={...b}; delete n[key]; return n;}); } }
 
   useEffect(()=>onAuthStateChanged(auth,u=>{
