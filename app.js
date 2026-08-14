@@ -15,7 +15,7 @@ import {
 import { shoppingListConfig, ALLOWED_EMAILS, WORKER_URL } from "./config.js";
 
 const html = htm.bind(h);
-const BUILD = "v61";  // bump in lockstep with sw.js CACHE every deploy
+const BUILD = "v62";  // bump in lockstep with sw.js CACHE every deploy
 function textOn(hex){ if(!hex||hex[0]!=="#") return "#161d18"; let h=hex.slice(1); if(h.length===3)h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); const L=(0.299*r+0.587*g+0.114*b)/255; return L>0.62?"#161d18":"#fff"; }
 const sqChar=n=>(((n||"?").trim()[0])||"?").toUpperCase();
 const lsq=(color,name,cls)=>html`<i class=${"lsq"+(cls?" "+cls:"")} style=${"background:"+(color||"#ccc")+";color:"+textOn(color)}>${sqChar(name)}</i>`;
@@ -1284,6 +1284,7 @@ function App(){
     ${(page==="shop" && checkedIn)?html`
       <div class="submitbar"><div class="inner"><${SlideConfirm} busy=${isBusy("checkout")} label=${shopChecked>0?"Slide to check out \u00b7 "+shopChecked+" bought":"Slide to check out"} onConfirm=${checkOut} /></div></div>`:null}
     ${toast?html`<div class="toast">${toast}</div>`:null}
+    <div class=${"vstamp"+(swVer&&swVer!==BUILD?" stale":"")}>${BUILD}</div>
   `;
 }
 render(html`<${App}/>`, document.getElementById("app"));

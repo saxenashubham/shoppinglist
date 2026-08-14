@@ -388,3 +388,6 @@ details.assumed[open] summary::before{content:"\25be ";}
 /* version line in the dropdown menu */
 .ddver{font-size:11px;color:var(--muted);text-align:center;padding:8px 10px 4px;font-weight:600;letter-spacing:.02em}
 .ddver.stale{color:var(--orange)}
+/* always-on corner version stamp (below the slide bar so checkout covers it) */
+.vstamp{position:fixed;right:6px;bottom:calc(4px + env(safe-area-inset-bottom));z-index:4;font-size:10px;font-weight:700;color:var(--muted);opacity:.4;pointer-events:none;letter-spacing:.03em}
+.vstamp.stale{color:var(--orange);opacity:.85}
