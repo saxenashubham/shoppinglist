@@ -1,5 +1,5 @@
 import { h, render } from "https://esm.sh/preact@10.19.3";
-import { useState, useEffect, useMemo } from "https://esm.sh/preact@10.19.3/hooks";
+import { useState, useEffect, useMemo, useRef } from "https://esm.sh/preact@10.19.3/hooks";
 import htm from "https://esm.sh/htm@3.1.1";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -15,6 +15,7 @@ import {
 import { shoppingListConfig, ALLOWED_EMAILS, WORKER_URL } from "./config.js";
 
 const html = htm.bind(h);
+const BUILD = "v61";  // bump in lockstep with sw.js CACHE every deploy
 function textOn(hex){ if(!hex||hex[0]!=="#") return "#161d18"; let h=hex.slice(1); if(h.length===3)h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); const L=(0.299*r+0.587*g+0.114*b)/255; return L>0.62?"#161d18":"#fff"; }
 const sqChar=n=>(((n||"?").trim()[0])||"?").toUpperCase();
 const lsq=(color,name,cls)=>html`<i class=${"lsq"+(cls?" "+cls:"")} style=${"background:"+(color||"#ccc")+";color:"+textOn(color)}>${sqChar(name)}</i>`;
@@ -24,6 +25,7 @@ const FLAVORS=["Sweet","Savory","Spicy","Mild"];
 const MEALS=[["snack","Snack"],["meal","Meal"],["soft","Soft (sore gums)"]];
 let _migRan=false;
 let _lp=null, _suppressClick=false;
+let _checkoutLock=false;
 const CUISINES=["Indian","Chinese","Thai","Italian","Mexican","American"];
 
 const appFb = initializeApp(shoppingListConfig);
@@ -116,6 +118,27 @@ function Panel({title, count, color, open, onToggle, children, dropCat, onGrip, 
 function Loader({label}){
   return html`<div class="loader"><span class="spin g big"></span><span>${label||"Loading\u2026"}</span></div>`;
 }
+// Slide-to-confirm: a tap does nothing; must drag the thumb ~90% across to fire onConfirm.
+function SlideConfirm({label, onConfirm, busy}){
+  const trackRef=useRef(null);
+  const [x,setX]=useState(0);
+  const xRef=useRef(0), maxRef=useRef(1), startRef=useRef(0), dragRef=useRef(false), doneRef=useRef(false);
+  const THUMB=52, PAD=4;
+  const setPos=v=>{ xRef.current=v; setX(v); };
+  function measure(){ const t=trackRef.current; maxRef.current=t?Math.max(1,t.clientWidth-THUMB-PAD*2):1; }
+  function onDown(e){ if(busy||doneRef.current) return; try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){} measure(); dragRef.current=true; startRef.current=e.clientX-xRef.current; }
+  function onMove(e){ if(!dragRef.current) return; let nx=e.clientX-startRef.current; nx=Math.max(0,Math.min(maxRef.current,nx)); setPos(nx); }
+  function onUp(e){ if(!dragRef.current) return; dragRef.current=false; try{e.currentTarget.releasePointerCapture(e.pointerId);}catch(_){}
+    if(xRef.current>=maxRef.current*0.9){ doneRef.current=true; setPos(maxRef.current); onConfirm(); }
+    else setPos(0); }
+  const pct=maxRef.current?xRef.current/maxRef.current:0;
+  return html`<div class="slidetrack" ref=${trackRef}>
+    <span class="slidelabel" style=${"opacity:"+(1-Math.min(1,pct*1.7))}>${busy?"Saving\u2026":label}</span>
+    <button class="slidethumb" style=${"transform:translateX("+x+"px)"+(dragRef.current?";transition:none":"")}
+      onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${onUp}
+      aria-label="Slide to check out">${busy?html`<${Spin}/>`:"\u2192"}</button>
+  </div>`;
+}
 
 function App(){
   const [user,setUser]=useState(undefined);
@@ -127,6 +150,7 @@ function App(){
   const [purch,setPurch]=useState([]);
   const [page,setPage]=useState("list");
   const [checkedIn,setCheckedIn]=useState(null);
+  const [swVer,setSwVer]=useState("");   // active service-worker cache version, for the deploy check
   const [shopAdd,setShopAdd]=useState("");
   const [draft,setDraft]=useState("");
   const [parsing,setParsing]=useState(false);
@@ -169,7 +193,55 @@ function App(){
     setRLoading(false);
   }
   const addIngChip=name=>{const t=(name||"").trim(); if(!t) return; setRIng(cur=>{const have=cur.split(/[\n,]+/).map(x=>x.trim().toLowerCase()); if(have.includes(t.toLowerCase())) return cur; return cur.trim()?cur.replace(/\s*$/,"")+", "+t:t;});};
-  function openRecipes(){ setRecipeOpen(true); }
+  function openRecipes(){ setRecipeTab("new"); setRecipeOpen(true); }
+  // ---- saved recipes (favorites) + add-ingredients-to-list ----
+  const isSavedRecipe=name=>savedRecipes.some(r=>(r.name||"").toLowerCase()===(name||"").toLowerCase());
+  function toggleSaveRecipe(d){
+    const id=slug(d.name);
+    const ref=doc(db,"shoppinglist_recipes",id);
+    return run("saverec_"+id, ()=> isSavedRecipe(d.name)
+      ? deleteDoc(ref)
+      : setDoc(ref,{name:d.name,minutes:d.minutes||null,need:d.need||[],ingredientsUsed:d.ingredientsUsed||[],steps:d.steps||[],notes:d.notes||"",oneExtra:d.oneExtra||"",ts:serverTimestamp()}));
+  }
+  // strip a leading quantity + measure word so "2 cloves garlic" -> "Garlic"; local only, never touches the global parser
+  const cleanNeed=s=>normalizeName(String(s||"").replace(/^\s*[\d\u00bc\u00bd\u00be\u2153\u2154\u215b/.\s-]*\s*(cups?|cloves?|tbsps?|tablespoons?|tsps?|teaspoons?|pinch(es)?|cans?|sprigs?|slices?|pieces?|sticks?|heads?|bunch(es)?|handfuls?)\b\s*(of\s+)?/i,""));
+  // a recipe ingredient counts as a kitchen staple if a staple name matches it whole-word (so "salt to taste" is filtered, "olive oil" is not filtered by staple "oil" unless "oil" is a standalone word)
+  const ingMatchesKitchen=n=>{ const c=cleanNeed(n).toLowerCase().trim(); if(!c) return false; const w=c.split(/\s+/); return kitchen.some(k=>{ const kl=(k||"").toLowerCase().trim(); return kl && (c===kl || w.includes(kl)); }); };
+  // what a recipe offers to add: its buy-list (need) if present, else all ingredients used, minus assumed kitchen staples
+  function recipeAddSource(d){ const need=d.need||[]; const used=d.ingredientsUsed||[]; return (need.length?need:used).filter(n=>!ingMatchesKitchen(n)); }
+  function openAddRecipe(d){
+    const need=d.need||[];
+    const source=recipeAddSource(d);
+    const isNeed=n=>need.some(x=>(x||"").toLowerCase()===(n||"").toLowerCase());
+    const sel={}; source.forEach(n=>{ sel[n]={on:isNeed(n), name:cleanNeed(n)||n}; });
+    setNeedSel(sel); setAddRecipe(d);
+  }
+  async function addRecipeNeeds(){
+    const d=addRecipe; if(!d){ return; }
+    const source=recipeAddSource(d);
+    const chosen=source
+      .filter(n=>needSel[n]&&needSel[n].on)
+      .map(n=>titleCase((needSel[n].name||"").trim()))
+      .filter(Boolean);
+    if(!chosen.length){ setAddRecipe(null); return; }
+    const existing=new Set(list.map(i=>(i.key||"").toLowerCase()));
+    const toAdd=[];
+    for(const nm of chosen){
+      if(existing.has(nm.toLowerCase())) continue; existing.add(nm.toLowerCase());
+      const known=lookup(dict,nm);
+      toAdd.push({name:nm,stores:(known&&known.stores)||[],category:(known&&known.category)||"Unsorted"});
+    }
+    if(!toAdd.length){ setAddRecipe(null); flash("Already on your list"); return; }
+    await run("addrecipe", async ()=>{
+      const b=writeBatch(db);
+      for(const it of toAdd){
+        if(it.stores.length) b.set(doc(db,"shoppinglist_dictionary",slug(it.name)),{name:it.name,stores:it.stores,category:it.category},{merge:true});
+        b.set(doc(collection(db,"shoppinglist_list")),{key:it.name,name:it.name,stores:[...it.stores],category:it.category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()});
+      }
+      await b.commit();
+    });
+    setAddRecipe(null); flash(toAdd.length===1?`"${toAdd[0].name}" added`:`${toAdd.length} added to list`);
+  }
   async function addKitchen(){
     const parts=kDraft.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
     if(!parts.length){return;}
@@ -218,10 +290,16 @@ function App(){
   const [rOpen,setROpen]=useState({});
   const [kitchenModal,setKitchenModal]=useState(false);
   const [kDraft,setKDraft]=useState("");
+  const [savedRecipes,setSavedRecipes]=useState([]);
+  const [recipeTab,setRecipeTab]=useState("new");   // "new" | "saved"
+  const [addRecipe,setAddRecipe]=useState(null);     // dish whose ingredients are being added
+  const [needSel,setNeedSel]=useState({});           // {needString: bool}
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
   const sname=id=>(stores.find(s=>s.id===id)||{}).name||id;
+  // dict is the source of truth for store mapping; the row's own stores are a warm offline fallback
+  const storesOf=it=>{ const m=lookup(dict,it.key||it.name); return (m&&m.stores&&m.stores.length)?m.stores:(it.stores||[]); };
   const toggleCat=key=>setCollapsed(c=>({...c,[key]:!c[key]}));
   const [drag,setDrag]=useState(null);
   const [ghost,setGhost]=useState(null);
@@ -301,7 +379,7 @@ function App(){
   const setAllCats=(keys,collapse)=>setCollapsed(c=>{const n={...c}; keys.forEach(k=>{ if(collapse) n[k]=true; else delete n[k]; }); return n;});
   const isBusy=k=>!!busy[k];
   async function run(key, fn){ setBusy(b=>({...b,[key]:true}));
-    try{ await fn(); } catch(e){ flash("Something went wrong"); }
+    try{ await fn(); } catch(e){ console.error("[run:"+key+"]",e); flash("Error: "+((e&&(e.code||e.message))||"unknown")); }
     finally{ setBusy(b=>{const n={...b}; delete n[key]; return n;}); } }
 
   useEffect(()=>onAuthStateChanged(auth,u=>{
@@ -311,6 +389,10 @@ function App(){
   useEffect(()=>{const on=()=>setOnline(true),off=()=>setOnline(false);
     addEventListener("online",on);addEventListener("offline",off);
     return()=>{removeEventListener("online",on);removeEventListener("offline",off);};},[]);
+  useEffect(()=>{
+    if(!("caches" in self)) return;
+    caches.keys().then(ks=>{const k=ks.find(x=>x.startsWith("basketly-")); if(k) setSwVer(k.slice("basketly-".length));}).catch(()=>{});
+  },[]);
 
   useEffect(()=>{
     if(!user) return;
@@ -332,7 +414,8 @@ function App(){
     const u3=onSnapshot(collection(db,"shoppinglist_list"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setList(a);setLoading(false);});
     const u4=onSnapshot(collection(db,"shoppinglist_purchased"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setPurch(a);});
     const u5=onSnapshot(collection(db,"shoppinglist_staples"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setStaples(a);});
-    return()=>{u1();u2();u3();u4();u5();};
+    const u6=onSnapshot(collection(db,"shoppinglist_recipes"),snap=>{const a=[];snap.forEach(d=>a.push({id:d.id,...d.data()}));setSavedRecipes(a);});
+    return()=>{u1();u2();u3();u4();u5();u6();};
   },[user]);
 
   async function signIn(){try{await signInWithPopup(auth,new GoogleAuthProvider());}catch{flash("Sign-in failed");}}
@@ -399,7 +482,7 @@ function App(){
   const toggle=it=>setDoc(doc(db,"shoppinglist_list",it.id),{checked:!it.checked},{merge:true});
 
   // ---- item editor: remove, category (remembered), store mapping ----
-  function openItem(it){ setItemModal(it); setEditCat(it.category||"Unsorted"); setEditStores([...(it.stores||[])]); setEditTags([...(it.tags||[])]); setTagDraft(""); }
+  function openItem(it){ setItemModal(it); setEditCat(it.category||"Unsorted"); setEditStores([...storesOf(it)]); setEditTags([...(it.tags||[])]); setTagDraft(""); }
   const toggleEditStore=sid=>setEditStores(es=>es.includes(sid)?es.filter(x=>x!==sid):[...es,sid]);
   function addTag(){ const t=tagDraft.trim(); if(!t) return; if(!editTags.some(x=>x.toLowerCase()===t.toLowerCase())) setEditTags(ts=>[...ts,t]); setTagDraft(""); }
   const removeTag=t=>setEditTags(ts=>ts.filter(x=>x!==t));
@@ -417,7 +500,7 @@ function App(){
 
   async function addInShop(){
     const t=normalizeName(shopAdd); if(!t||!checkedIn) return;
-    if(list.some(i=>i.key.toLowerCase()===t.toLowerCase()&&(i.stores||[]).includes(checkedIn))){ setShopAdd(""); flash(t+" is already on this list"); return; }
+    if(list.some(i=>i.key.toLowerCase()===t.toLowerCase()&&storesOf(i).includes(checkedIn))){ setShopAdd(""); flash(t+" is already on this list"); return; }
     const known=lookup(dict,t);
     let category=(known&&known.category)||"Unsorted";
     let stores=known?((known.stores||[]).includes(checkedIn)?known.stores:[...(known.stores||[]),checkedIn]):[checkedIn];
@@ -457,20 +540,24 @@ function App(){
     await run("cleanup", work); flash("Names cleaned up");
   }
   async function checkOut(){
-    const store=checkedIn;
-    const done=list.filter(i=>i.stores.includes(store)&&i.checked);
-    if(done.length){
-      await run("checkout", async ()=>{
-        const b=writeBatch(db);
-        for(const i of done){
-          b.set(doc(collection(db,"shoppinglist_purchased")),{name:i.name,store,date:todayISO(),status:"purchased",ts:serverTimestamp()});
-          b.delete(doc(db,"shoppinglist_list",i.id));
-        }
-        await b.commit();
-      });
-      flash(done.length+" bought at "+sname(store));
-    }
-    setCheckedIn(null);
+    if(_checkoutLock) return;                 // guard against any double-fire
+    _checkoutLock=true;
+    try{
+      const store=checkedIn;
+      const done=list.filter(i=>storesOf(i).includes(store)&&i.checked);
+      if(done.length){
+        await run("checkout", async ()=>{
+          const b=writeBatch(db);
+          for(const i of done){
+            b.set(doc(collection(db,"shoppinglist_purchased")),{name:i.name,store,date:todayISO(),status:"purchased",ts:serverTimestamp()});
+            b.delete(doc(db,"shoppinglist_list",i.id));
+          }
+          await b.commit();
+        });
+        flash(done.length+" bought at "+sname(store));
+      }
+      setCheckedIn(null);
+    } finally { _checkoutLock=false; }
   }
 
   // ---- stores: add / rename / recolor / delete ----
@@ -489,7 +576,7 @@ function App(){
     await run("addstore", ()=>setDoc(cfgDoc(),{stores:next.map(serStore)},{merge:true}));
     setNewStore({name:"",color:STORE_SWATCHES[3]}); flash(nm+" added");
   }
-  function orphansOf(sid){ return list.filter(i=>i.stores.includes(sid) && i.stores.filter(x=>x!==sid).length===0); }
+  function orphansOf(sid){ return list.filter(i=>storesOf(i).includes(sid) && storesOf(i).filter(x=>x!==sid).length===0); }
   function deleteStore(s){
     if(orphansOf(s.id).length){ setDelStore(s); setReassign({}); return; }
     if(!confirm(`Delete ${s.name}?`)) return;
@@ -499,8 +586,8 @@ function App(){
     await run("delstore_"+s.id, async ()=>{
       const b=writeBatch(db);
       b.set(cfgDoc(),{stores:storeDraft.filter(x=>x.id!==s.id).map(serStore)},{merge:true});
-      list.filter(i=>i.stores.includes(s.id)).forEach(i=>{
-        let ns=i.stores.filter(x=>x!==s.id);
+      list.filter(i=>storesOf(i).includes(s.id)).forEach(i=>{
+        let ns=storesOf(i).filter(x=>x!==s.id);
         if(ns.length===0 && assign[i.id]) ns=[assign[i.id]];
         b.set(doc(db,"shoppinglist_list",i.id),{stores:ns},{merge:true});
         b.set(doc(db,"shoppinglist_dictionary",slug(i.key)),{name:i.key,stores:ns,category:i.category||"Unsorted"},{merge:true});
@@ -536,14 +623,23 @@ function App(){
 
   // ---- staples ----
   const isStaple=name=>staples.some(s=>s.name===name);
-  function toggleStaple(name,st,cat){
+  function toggleStaple(name,seedStores,seedCat){
     const ref=doc(db,"shoppinglist_staples",slug(name));
-    return run("star_"+slug(name), ()=> isStaple(name) ? deleteDoc(ref) : setDoc(ref,{name,stores:st||[],category:cat||"Unsorted"}));
+    return run("star_"+slug(name), async ()=>{
+      if(isStaple(name)){ await deleteDoc(ref); return; }
+      // seed the shared dictionary only if it has no entry yet — one source of truth
+      if(!lookup(dict,name) && seedStores && seedStores.length){
+        await setDoc(doc(db,"shoppinglist_dictionary",slug(name)),{name,stores:seedStores,category:seedCat||"Unsorted"},{merge:true});
+      }
+      await setDoc(ref,{name});
+    });
   }
   async function addNewStaple(){
     const nm=normalizeName(newStaple); if(!nm) return;
-    const meta=lookup(dict,nm)||{stores:[],category:"Unsorted"};
-    await run("addstaple", ()=>setDoc(doc(db,"shoppinglist_staples",slug(nm)),{name:nm,stores:meta.stores||[],category:meta.category||"Unsorted"}));
+    await run("addstaple", async ()=>{
+      if(!lookup(dict,nm)) await setDoc(doc(db,"shoppinglist_dictionary",slug(nm)),{name:nm,stores:[],category:"Unsorted"},{merge:true});
+      await setDoc(doc(db,"shoppinglist_staples",slug(nm)),{name:nm});
+    });
     setNewStaple("");
   }
   async function addStaplesToList(){
@@ -607,7 +703,7 @@ function App(){
   }
   const allTags=useMemo(()=>{const s=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>s.add(t))); return [...s].sort((a,b)=>a.localeCompare(b));},[list]);
   const shopOrder=useMemo(()=>{
-    const cnt=Object.fromEntries(stores.map(s=>[s.id, list.filter(i=>i.stores.includes(s.id)&&!i.checked).length]));
+    const cnt=Object.fromEntries(stores.map(s=>[s.id, list.filter(i=>storesOf(i).includes(s.id)&&!i.checked).length]));
     const idx=Object.fromEntries(stores.map((s,i)=>[s.id,i]));
     return stores.slice().sort((a,b)=>{
       const ca=cnt[a.id], cb=cnt[b.id];
@@ -615,7 +711,7 @@ function App(){
       if(cb!==ca) return cb-ca;
       return idx[a.id]-idx[b.id];
     }).map(s=>({...s,_n:cnt[s.id]}));
-  },[stores,list]);
+  },[stores,list,dict]);
   const recentProduce=useMemo(()=>{
     const cut=Date.now()-30*864e5, seen=new Set(), out=[];
     purch.slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).forEach(p=>{
@@ -627,13 +723,14 @@ function App(){
   },[purch,dict]);
   const listGroups=useMemo(()=>{
     const l=list.filter(i=>{
-      const sp=(i.stores||[]).length===0 || (i.stores||[]).some(s=>!exclStores.has(s));
+      const st=storesOf(i);
+      const sp=st.length===0 || st.some(s=>!exclStores.has(s));
       const tp=(i.tags||[]).length===0 || (i.tags||[]).some(t=>!exclTags.has(t));
       return sp && tp;
     });
     return groupByCat(l,"list");
-  },[list,collapsed,cats,exclTags,exclStores]);
-  const shopItems=useMemo(()=>list.filter(i=>i.stores.includes(checkedIn)),[list,checkedIn]);
+  },[list,collapsed,cats,exclTags,exclStores,dict]);
+  const shopItems=useMemo(()=>list.filter(i=>storesOf(i).includes(checkedIn)),[list,checkedIn,dict]);
   const shopGroups=useMemo(()=>groupByCat(shopItems,"shop:"+checkedIn),[shopItems,collapsed,checkedIn,cats]);
   const shopChecked=shopItems.filter(i=>i.checked).length;
 
@@ -677,6 +774,51 @@ function App(){
   },[page,drag]);
 
   const check=html`<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+  function dishCard(d, okey){
+    const open=!!rOpen[okey];
+    const onToggle=()=>setROpen(o=>({...o,[okey]:!o[okey]}));
+    const saved=isSavedRecipe(d.name);
+    const need=d.need||[];
+    const used=d.ingredientsUsed||[];
+    const source=recipeAddSource(d);
+    const have=used.filter(u=>!need.some(n=>(n||"").toLowerCase()===(u||"").toLowerCase()));
+    const adding=addRecipe && addRecipe.name===d.name;
+    return html`
+      <div class="panel">
+        <div class="phead rdhead">
+          <button class="pheadmain" onClick=${onToggle}>
+            <span class="ptitle">${d.name}</span>
+            <span class="pright">${d.minutes?html`<span class="pcount">${d.minutes} min</span>`:null}<span class=${"pcaret"+(open?" up":"")}>\u25be</span></span>
+          </button>
+          <button class=${"recstar"+(saved?" on":"")} onClick=${()=>toggleSaveRecipe(d)} aria-label=${saved?"Unsave recipe":"Save recipe"}>${isBusy("saverec_"+slug(d.name))?html`<${Spin} g=${true}/>`:(saved?"\u2605":"\u2606")}</button>
+        </div>
+        ${open?html`<div class="pbody rbody">
+          ${used.length?html`<div class="haveline">On hand: ${have.length} of ${used.length}${have.length?" \u00b7 "+have.join(", "):""}</div>`:null}
+          ${need.length?html`<div class="needline">To buy: ${need.join(", ")}</div>`:html`<div class="haveline">You have everything for this</div>`}
+          ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
+          ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
+          ${d.oneExtra?html`<div class="rsec rextra"><h5>With one more item</h5><p>${d.oneExtra}</p></div>`:null}
+          ${source.length?(adding
+            ? html`<div class="addneed">
+                <div class="hint">Tick what you need to buy \u2014 edit a name if it looks off. Ticked items go on your list.</div>
+                ${source.map(n=>{ const row=needSel[n]||{on:false,name:n}; return html`<div class="needrow">
+                  <button class=${"box sm"+(row.on?" on":"")} onClick=${()=>setNeedSel(s=>({...s,[n]:{...(s[n]||{name:n}),on:!(s[n]&&s[n].on)}}))}>${row.on?check:null}</button>
+                  <div class="neededit">
+                    <input class="needinput" value=${row.name} onInput=${e=>{const v=e.target.value; setNeedSel(s=>({...s,[n]:{...(s[n]||{on:true}),name:v}}));}} />
+                    ${n!==row.name?html`<span class="needraw">from \u201c${n}\u201d</span>`:null}
+                  </div>
+                </div>`})}
+                <div class="addneedbtns">
+                  <button class="ghost" onClick=${()=>setAddRecipe(null)}>Cancel</button>
+                  <button class="primary sm" disabled=${isBusy("addrecipe")||!Object.values(needSel).some(v=>v&&v.on&&(v.name||"").trim())} onClick=${addRecipeNeeds}>${isBusy("addrecipe")?html`<${Spin}/>Adding\u2026`:"Add ticked to list"}</button>
+                </div>
+              </div>`
+            : html`<button class="primary sm addneedbtn" onClick=${()=>openAddRecipe(d)}>Add ingredients to list</button>`
+          ):null}
+        </div>`:null}
+      </div>`;
+  }
 
   if(user===undefined) return html`<div class="gate"><div class="brand">Basketly<span class="dot">.</span></div><${Loader} label="Starting\u2026"/></div>`;
   if(user===null) return html`<div class="gate">
@@ -757,10 +899,10 @@ function App(){
           <${Panel} title=${g.cat} count=${g.items.length} open=${g.open} onToggle=${()=>toggleCat(g.key)}
             dropCat=${g.cat} hot=${!!drag && overCat===g.cat}
             onGrip=${(reorder && g.cat!=="Unsorted")?(e=>startDrag("cat",{cat:g.cat,label:g.cat},e)):null}>
-            ${g.items.map(it=>html`
+            ${g.items.map(it=>{ const st=storesOf(it); return html`
               <div class="lrow" onPointerDown=${e=>itemPointerDown(it,e)} onPointerMove=${itemPointerMove} onPointerUp=${itemPointerUp}>
                 ${reorder?html`<button class="grip itemgrip" onPointerDown=${e=>startDrag("item",{item:it,cat:it.category||"Unsorted",label:it.name},e)} onClick=${e=>e.stopPropagation()} aria-label="Drag to recategorize">\u2261</button>`:null}
-                <button class=${"rowstar lead-star"+(isStaple(it.name)?" on":"")} onClick=${()=>toggleStaple(it.name,it.stores,it.category)}>${isBusy("star_"+slug(it.name))?html`<${Spin} g=${true}/>`:(isStaple(it.name)?"\u2605":"\u2606")}</button>
+                <button class=${"rowstar lead-star"+(isStaple(it.name)?" on":"")} onClick=${()=>toggleStaple(it.name,st,it.category)}>${isBusy("star_"+slug(it.name))?html`<${Spin} g=${true}/>`:(isStaple(it.name)?"\u2605":"\u2606")}</button>
                 <div class="lmain" onClick=${()=>openItemGuarded(it)}>
                   <span class="lmid">
                     <span class="lname">${it.name}</span>
@@ -769,12 +911,12 @@ function App(){
                       ${(it.tags||[]).map(t=>html`<span class="ltag">${t}</span>`)}
                     </span>
                   </span>
-                  <span class="lstores">${it.stores.length
-                    ? it.stores.map(s=>lsq(scolor(s),sname(s)))
+                  <span class="lstores">${st.length
+                    ? st.map(s=>lsq(scolor(s),sname(s)))
                     : html`<em class="uns">unsorted</em>`}</span>
                 </div>
                 <button class="rowx" onClick=${()=>removeRow(it)}>${isBusy("rm_"+it.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
-              </div>`)}
+              </div>`})}
           <//>`)}`:null}
 
     ${page==="shop"?( !checkedIn ? html`
@@ -809,7 +951,7 @@ function App(){
                     <span class="lname">${it.name}</span>
                     ${(it.tags&&it.tags.length)?html`<span class="ltags">${it.tags.map(t=>html`<span class="ltag">${t}</span>`)}</span>`:null}
                   </div>
-                  ${it.stores.length>1?html`<div class="also">${it.stores.filter(x=>x!==checkedIn).map(x=>lsq(scolor(x),sname(x)))}</div>`:null}
+                  ${(()=>{const st=storesOf(it); return st.length>1?html`<div class="also">${st.filter(x=>x!==checkedIn).map(x=>lsq(scolor(x),sname(x)))}</div>`:null;})()}
                 </div>`)}
             <//>`;})}` ):null}
 
@@ -964,6 +1106,7 @@ function App(){
         <button class="ddm" onClick=${()=>{setMenu(false);openCats();}}>Manage Categories</button>
         <div class="ddsep"></div>
         <button class="ddm ddout" onClick=${()=>signOut(auth)}>Sign out</button>
+        <div class=${"ddver"+(swVer&&swVer!==BUILD?" stale":"")}>Version ${BUILD}${swVer&&swVer!==BUILD?html` \u00b7 cache ${swVer} \u2014 reload`:""}</div>
       </div>`:null}
 
     <!-- categories -->
@@ -991,10 +1134,11 @@ function App(){
         ${staples.length===0?html`<div class="hint">Nothing here yet \u2014 star items on the List or in Purchase History to keep them here.</div>`:null}
         ${staples.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>{
           const onList=list.some(i=>i.key===s.name);
+          const meta=lookup(dict,s.name)||{stores:[],category:"Unsorted"};
           return html`<div class=${"strow"+(onList?" off":"")} onClick=${()=>{ if(!onList) setStapleSel(v=>({...v,[s.id]:!v[s.id]})); }}>
             <div class=${"box sm"+((stapleSel[s.id]&&!onList)?" on":"")}>${(stapleSel[s.id]&&!onList)?check:null}</div>
             <span class="sname2">${s.name}</span>
-            <span class="lstores">${(s.stores||[]).map(x=>lsq(scolor(x),sname(x)))}</span>
+            <span class="lstores">${(meta.stores||[]).map(x=>lsq(scolor(x),sname(x)))}</span>
             ${onList?html`<span class="tag">on list</span>`:null}
             <button class="rowx" onClick=${e=>{e.stopPropagation();toggleStaple(s.name,s.stores,s.category);}}>${isBusy("star_"+s.id)?html`<${Spin} g=${true}/>`:"\u00d7"}</button>
           </div>`;})}
@@ -1091,6 +1235,11 @@ function App(){
           <button class="sheetx" onClick=${()=>setRecipeOpen(false)} aria-label="Close">\u00d7</button>
         </div>
         <div class="rpbody">
+          <div class="rtabs">
+            <button class=${recipeTab==="new"?"on":""} onClick=${()=>setRecipeTab("new")}>Get ideas</button>
+            <button class=${recipeTab==="saved"?"on":""} onClick=${()=>setRecipeTab("saved")}>Saved${savedRecipes.length?" ("+savedRecipes.length+")":""}</button>
+          </div>
+          ${recipeTab==="new"?html`
           <div class="hint">Your ingredients (comma or line separated)</div>
           <textarea class="tin ta" placeholder="e.g. paneer, spinach, tomato, rice\nor one per line" value=${rIng} onInput=${e=>setRIng(e.target.value)}></textarea>
           ${recentProduce.length>0?html`
@@ -1115,21 +1264,15 @@ function App(){
             : html`
               ${rWho==="baby"?html`<div class="babycaveat">Ideas only \u2014 check textures for your baby's age, and avoid honey under 12 months, added salt/sugar, and choking hazards. If they keep refusing food, it's worth checking with your pediatrician.</div>`:null}
               <div class="rlist">
-                ${rResults.map((d,i)=>html`
-                  <div class="panel">
-                    <button class="phead" onClick=${()=>setROpen(o=>({...o,[i]:!o[i]}))}>
-                      <span class="ptitle">${d.name}</span>
-                      <span class="pright">${d.minutes?html`<span class="pcount">${d.minutes} min</span>`:null}<span class=${"pcaret"+(rOpen[i]?" up":"")}>\u25be</span></span>
-                    </button>
-                    ${rOpen[i]?html`<div class="pbody rbody">
-                      ${(d.need&&d.need.length)?html`<div class="needline">You'd need: ${d.need.join(", ")}</div>`:html`<div class="haveline">You have everything for this</div>`}
-                      ${(d.ingredientsUsed&&d.ingredientsUsed.length)?html`<div class="rsec"><h5>Uses</h5><p>${d.ingredientsUsed.join(", ")}</p></div>`:null}
-                      ${(d.steps&&d.steps.length)?html`<div class="rsec"><h5>Steps</h5><ol>${d.steps.map(s=>html`<li>${s}</li>`)}</ol></div>`:null}
-                      ${d.notes?html`<div class="rsec"><h5>Notes</h5><p>${d.notes}</p></div>`:null}
-                      ${d.oneExtra?html`<div class="rsec rextra"><h5>With one more item</h5><p>${d.oneExtra}</p></div>`:null}
-                    </div>`:null}
-                  </div>`)}
+                ${rResults.map((d,i)=>dishCard(d,i))}
               </div>`):null}
+          `:html`
+          ${savedRecipes.length===0
+            ? html`<div class="empty"><div class="big">No saved recipes</div>Tap the \u2606 on any idea to keep it here.</div>`
+            : html`<div class="rlist">
+                ${savedRecipes.slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(r=>dishCard(r,"s:"+r.id))}
+              </div>`}
+          `}
         </div>
       </div>`:null}
 
@@ -1139,7 +1282,7 @@ function App(){
       <div class="imgview" onClick=${()=>setViewImg(null)}><img src=${viewImg} alt="attachment" /></div>`:null}
 
     ${(page==="shop" && checkedIn)?html`
-      <div class="submitbar"><div class="inner"><button class="primary" style="width:100%" disabled=${isBusy("checkout")} onClick=${checkOut}>${isBusy("checkout")?html`<${Spin}/>Saving\u2026`:(shopChecked>0?"Check out \u00b7 "+shopChecked+" bought":"Check out")}</button></div></div>`:null}
+      <div class="submitbar"><div class="inner"><${SlideConfirm} busy=${isBusy("checkout")} label=${shopChecked>0?"Slide to check out \u00b7 "+shopChecked+" bought":"Slide to check out"} onConfirm=${checkOut} /></div></div>`:null}
     ${toast?html`<div class="toast">${toast}</div>`:null}
   `;
 }

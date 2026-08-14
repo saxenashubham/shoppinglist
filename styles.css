@@ -380,3 +380,11 @@ details.assumed[open] summary::before{content:"\25be ";}
 .addneedbtns{display:flex;gap:8px;align-items:center;margin-top:12px}
 .addneedbtns .ghost{flex:0 0 auto}
 .addneedbtns .primary.sm{flex:1}
+/* slide-to-check-out control (bottom bar) */
+.slidetrack{position:relative;width:100%;height:56px;border-radius:14px;background:color-mix(in srgb,var(--green) 15%,#fff);border:1.5px solid color-mix(in srgb,var(--green) 42%,#fff);overflow:hidden;box-shadow:var(--shadow);touch-action:none;user-select:none;-webkit-user-select:none}
+.slidelabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--green-deep);pointer-events:none;padding-left:40px}
+.slidethumb{position:absolute;top:4px;left:4px;width:52px;height:46px;border-radius:11px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;box-shadow:0 2px 8px rgba(28,43,30,.32);touch-action:none;transition:transform .18s ease}
+.slidethumb:active{background:var(--green-deep)}
+/* version line in the dropdown menu */
+.ddver{font-size:11px;color:var(--muted);text-align:center;padding:8px 10px 4px;font-weight:600;letter-spacing:.02em}
+.ddver.stale{color:var(--orange)}
