@@ -296,6 +296,33 @@ function App(){
   const [needSel,setNeedSel]=useState({});           // {needString: bool}
 
   const flash=m=>{setToast(m);setTimeout(()=>setToast(""),1800);};
+  // ---- add-sheet suggestions: match the item being typed against everything added before ----
+  const addTaRef=useRef(null);
+  const purchCount=useMemo(()=>{const m={}; purch.forEach(p=>{const k=(p.name||"").toLowerCase(); if(k) m[k]=(m[k]||0)+1;}); return m;},[purch]);
+  const draftToken=normalizeName(draft.split(/\r?\n|,|;/).pop()||"").toLowerCase();
+  const suggestions=useMemo(()=>{
+    const q=draftToken; if(q.length<2) return [];
+    const onList=new Set(list.map(i=>(i.key||"").toLowerCase()));
+    const seen=new Set(), out=[];
+    for(const [name,v] of Object.entries(dict)){
+      const nl=(name||"").toLowerCase(); if(!nl||seen.has(nl)) continue;
+      const pos=nl.indexOf(q); if(pos<0) continue; seen.add(nl);
+      out.push({name:titleCase(name),stores:v.stores||[],category:v.category||"Unsorted",
+        pre:(pos===0||nl.includes(" "+q))?0:1,n:purchCount[nl]||0,on:onList.has(nl)});
+    }
+    out.sort((a,b)=>a.pre-b.pre||b.n-a.n||a.name.localeCompare(b.name));
+    return out.slice(0,8);
+  },[draftToken,dict,list,purchCount]);
+  const stripToken=d=>{ const i=Math.max(d.lastIndexOf("\n"),d.lastIndexOf(","),d.lastIndexOf(";")); return i<0?"":d.slice(0,i+1)+(d[i]==="\n"?"":" "); };
+  async function pickSuggestion(s){
+    const key="sug_"+slug(s.name);
+    if(s.on||busy[key]) return;
+    setDraft(stripToken);
+    if(addTaRef.current) addTaRef.current.focus();   // keep the keyboard up for the next item
+    if(!s.stores.length){ setAssignList(a=>a.some(x=>x.name.toLowerCase()===s.name.toLowerCase())?a:[...a,{name:s.name,stores:[],category:s.category}]); return; }
+    await run(key, ()=>setDoc(doc(collection(db,"shoppinglist_list")),{key:s.name,name:s.name,stores:[...s.stores],category:s.category,checked:false,addedBy:(user.email||"").split("@")[0],ts:serverTimestamp()}));
+    flash(`"${s.name}" added to ${s.category}`);
+  }
   const scolor=id=>(stores.find(s=>s.id===id)||{}).color||"#ccc";
   const sname=id=>(stores.find(s=>s.id===id)||{}).name||id;
   // dict is the source of truth for store mapping; the row's own stores are a warm offline fallback
@@ -1016,7 +1043,18 @@ function App(){
       <div class="sheet">
         <div class="sheethead"><div class="lead">Paste Your Voice List</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
         <div class="hint">Alexa, WhatsApp, Notes \u2014 one line or comma-separated. Basketly splits it and files each item to the right store.</div>
-        <textarea placeholder=${"2 lbs onions\ncilantro\npaneer\nmilk\ntoor dal"} value=${draft} onInput=${e=>setDraft(e.target.value)}></textarea>
+        <textarea ref=${addTaRef} placeholder=${"2 lbs onions\ncilantro\npaneer\nmilk\ntoor dal"} value=${draft} onInput=${e=>setDraft(e.target.value)}></textarea>
+        ${suggestions.length?html`
+          <div class="sugbox">
+            <div class="sughead">Added before \u2014 tap to put it on the list</div>
+            ${suggestions.map(s=>{ const k="sug_"+slug(s.name); return html`
+              <button class=${"sugrow"+(s.on?" off":"")} disabled=${s.on||isBusy(k)} onMouseDown=${e=>e.preventDefault()} onClick=${()=>pickSuggestion(s)}>
+                <span class="sugplus">${isBusy(k)?html`<${Spin} g=${true}/>`:(s.on?"\u2713":"+")}</span>
+                <span class="sugname">${s.name}</span>
+                ${s.on?html`<span class="tag">on list</span>`:html`<span class="sugcat">${s.category}</span>`}
+                <span class="lstores">${s.stores.length?s.stores.map(x=>lsq(scolor(x),sname(x))):html`<em class="uns">no store</em>`}</span>
+              </button>`;})}
+          </div>`:null}
         <button class="primary" disabled=${parsing||!draft.trim()} onClick=${addItems}>${parsing?html`<${Spin}/>Routing\u2026`:"Add to list"}</button>
       </div>`:null}
     ${review.length>0?html`
@@ -1284,7 +1322,6 @@ function App(){
     ${(page==="shop" && checkedIn)?html`
       <div class="submitbar"><div class="inner"><${SlideConfirm} busy=${isBusy("checkout")} label=${shopChecked>0?"Slide to check out \u00b7 "+shopChecked+" bought":"Slide to check out"} onConfirm=${checkOut} /></div></div>`:null}
     ${toast?html`<div class="toast">${toast}</div>`:null}
-    <div class=${"vstamp"+(swVer&&swVer!==BUILD?" stale":"")}>${BUILD}</div>
   `;
 }
 render(html`<${App}/>`, document.getElementById("app"));

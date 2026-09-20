@@ -388,6 +388,14 @@ details.assumed[open] summary::before{content:"\25be ";}
 /* version line in the dropdown menu */
 .ddver{font-size:11px;color:var(--muted);text-align:center;padding:8px 10px 4px;font-weight:600;letter-spacing:.02em}
 .ddver.stale{color:var(--orange)}
-/* always-on corner version stamp (below the slide bar so checkout covers it) */
-.vstamp{position:fixed;right:6px;bottom:calc(4px + env(safe-area-inset-bottom));z-index:4;font-size:10px;font-weight:700;color:var(--muted);opacity:.4;pointer-events:none;letter-spacing:.03em}
-.vstamp.stale{color:var(--orange);opacity:.85}
+/* add-sheet suggestions */
+.sugbox{border:1.5px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--card)}
+.sughead{font-size:12px;font-weight:600;color:var(--muted);padding:8px 12px;background:#f7f5ef;border-bottom:1px solid var(--line)}
+.sugrow{width:100%;display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid #f1ede2;text-align:left}
+.sugrow:last-child{border-bottom:none}
+.sugrow:active{background:var(--green-tint)}
+.sugrow.off{opacity:.5}
+.sugplus{width:24px;height:24px;border-radius:7px;background:var(--green-tint);color:var(--green-deep);font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.sugplus .spin{margin:0;width:13px;height:13px}
+.sugname{flex:1;min-width:0;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sugcat{font-size:11px;font-weight:700;background:var(--green-tint);color:var(--green-deep);padding:2px 8px;border-radius:6px;flex:0 0 auto}
