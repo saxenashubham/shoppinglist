@@ -302,7 +302,7 @@ textarea:focus,.tin:focus{outline:none;border-color:var(--green)}
 .rerr{margin-top:12px;color:var(--red);font-size:14px;font-weight:600}
 .babycaveat{margin-top:16px;background:#fff7ed;border:1.5px solid #f0cfa0;border-radius:var(--r);padding:12px 14px;font-size:13px;line-height:1.45;color:#7a5312}
 .rlist{margin-top:14px;display:flex;flex-direction:column;gap:10px}
-.rbody{padding:2px 2px 6px}
+.rbody{padding:10px 14px 14px}
 .rsec{margin-top:10px}
 .rsec h5{font-family:var(--display);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 4px}
 .rsec p{margin:0;font-size:14px;line-height:1.45;color:var(--ink)}
@@ -359,3 +359,35 @@ details.assumed[open] summary::before{content:"\25be ";}
 .catopt:active{background:#f2f5f0}
 .storecard.empty{opacity:.5}
 .chip.mini.addchip{border-style:dashed;color:var(--green);font-weight:700;background:var(--card)}
+/* ---- recipe favorites: tabs, save star, add-ingredients checklist ---- */
+.rtabs{display:flex;gap:4px;background:#ece7db;border-radius:10px;padding:4px;margin-bottom:14px}
+.rtabs button{flex:1;padding:9px 0;border-radius:7px;font-weight:600;font-size:14px;color:var(--muted);transition:background .15s,color .15s}
+.rtabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.rdhead{display:flex;align-items:center}
+.rdhead .pheadmain{flex:1;min-width:0}
+.recstar{flex:0 0 auto;width:46px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:19px;color:#c9a21e}
+.recstar.on{color:#e8a91e}
+.addneedbtn{width:100%;margin-top:12px}
+.addneed{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.addneed .hint{margin-bottom:8px}
+.needrow{width:100%;display:flex;align-items:flex-start;gap:11px;padding:9px 2px;border-bottom:1px solid #f1ede2;text-align:left}
+.needrow:last-of-type{border-bottom:none}
+.needrow .box.sm{margin-top:2px;flex:0 0 auto}
+.neededit{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.needinput{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;font-family:var(--body);font-size:15px;color:var(--ink);background:#fff}
+.needinput:focus{outline:none;border-color:var(--green)}
+.needraw{font-size:11px;color:var(--muted);font-weight:500;padding-left:2px}
+.addneedbtns{display:flex;gap:8px;align-items:center;margin-top:12px}
+.addneedbtns .ghost{flex:0 0 auto}
+.addneedbtns .primary.sm{flex:1}
+/* slide-to-check-out control (bottom bar) */
+.slidetrack{position:relative;width:100%;height:56px;border-radius:14px;background:color-mix(in srgb,var(--green) 15%,#fff);border:1.5px solid color-mix(in srgb,var(--green) 42%,#fff);overflow:hidden;box-shadow:var(--shadow);touch-action:none;user-select:none;-webkit-user-select:none}
+.slidelabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--green-deep);pointer-events:none;padding-left:40px}
+.slidethumb{position:absolute;top:4px;left:4px;width:52px;height:46px;border-radius:11px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;box-shadow:0 2px 8px rgba(28,43,30,.32);touch-action:none;transition:transform .18s ease}
+.slidethumb:active{background:var(--green-deep)}
+/* version line in the dropdown menu */
+.ddver{font-size:11px;color:var(--muted);text-align:center;padding:8px 10px 4px;font-weight:600;letter-spacing:.02em}
+.ddver.stale{color:var(--orange)}
+/* always-on corner version stamp (below the slide bar so checkout covers it) */
+.vstamp{position:fixed;right:6px;bottom:calc(4px + env(safe-area-inset-bottom));z-index:4;font-size:10px;font-weight:700;color:var(--muted);opacity:.4;pointer-events:none;letter-spacing:.03em}
+.vstamp.stale{color:var(--orange);opacity:.85}
