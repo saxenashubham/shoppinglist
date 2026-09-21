@@ -428,3 +428,10 @@ details.assumed[open] summary::before{content:"\25be ";}
 .banner.upd button:disabled{opacity:.6}
 .ddm.ddreload{color:var(--orange);font-size:14px;padding:10px;text-align:center}
 .ddm.ddreload:disabled{opacity:.6}
+/* the version line doubles as the escape hatch: tap once to arm, again to fire */
+button.ddver{display:block;width:100%;background:none}
+button.ddver.armed{color:var(--orange);font-weight:700}
+button.ddver:disabled{opacity:.6}
+/* spelling chooser: the dupname grid without a canonical-key heading */
+.sheet .arow .dupgrid{margin-bottom:0}
+.sheet .arow:last-of-type{border-bottom:none}

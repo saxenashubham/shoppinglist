@@ -15,7 +15,7 @@ import {
 import { shoppingListConfig, ALLOWED_EMAILS, WORKER_URL } from "./config.js";
 
 const html = htm.bind(h);
-const BUILD = "v64";  // bump in lockstep with sw.js CACHE every deploy
+const BUILD = "v65";  // bump in lockstep with sw.js CACHE every deploy
 function textOn(hex){ if(!hex||hex[0]!=="#") return "#161d18"; let h=hex.slice(1); if(h.length===3)h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); const L=(0.299*r+0.587*g+0.114*b)/255; return L>0.62?"#161d18":"#fff"; }
 const sqChar=n=>(((n||"?").trim()[0])||"?").toUpperCase();
 const lsq=(color,name,cls)=>html`<i class=${"lsq"+(cls?" "+cls:"")} style=${"background:"+(color||"#ccc")+";color:"+textOn(color)}>${sqChar(name)}</i>`;
@@ -191,8 +191,11 @@ function App(){
   const [swVer,setSwVer]=useState("");     // cache version the ACTIVE service worker installed
   const [liveVer,setLiveVer]=useState("");  // cache version currently deployed on the server
   const [reloading,setReloading]=useState(false);
+  const [reloadArm,setReloadArm]=useState(false);  // second tap on the version line confirms
   const [shopAdd,setShopAdd]=useState("");
   const [draft,setDraft]=useState("");
+  const [nameChoice,setNameChoice]=useState([]);  // typed-vs-saved spelling conflicts from a paste
+  const [pendingAssign,setPendingAssign]=useState([]); // assign rows waiting behind the spelling chooser
   const [dupOpen,setDupOpen]=useState(false);
   const [dupPage,setDupPage]=useState(1);
   const [dupWin,setDupWin]=useState({});          // canonical key -> winning doc id
@@ -739,14 +742,18 @@ function App(){
     // "Diapers" back from the parser still matches the "diaper" we sent.
     const learnedByKey=new Map(Object.entries(learned).map(([n,v])=>[ckey(n),v]));
     const existing=new Set(list.map(i=>ckey(i.key||i.name)));
-    const toAdd=[], needAssign=[];
+    const toAdd=[], needAssign=[], conflicts=[];
     for(const n of names){
       const k=ckey(n);
       if(existing.has(k)) continue; existing.add(k);
       const known=lookup(n);
       if(known && (known.stores||[]).length){
-        // exact-match-after-normalization: merges silently, never surfaced
-        toAdd.push({name:known.name||n,stores:known.stores,category:known.category||"Unsorted"});
+        // The MERGE is silent — same canonical doc either way. What is not silent
+        // is whose spelling wins: substituting the saved name for what was just
+        // typed looks like the app rewriting your words. Ask instead.
+        const saved=known.name||n;
+        if(saved!==n) conflicts.push({typed:n,saved,stores:known.stores,category:known.category||"Unsorted",pick:"saved"});
+        else toAdd.push({name:saved,stores:known.stores,category:known.category||"Unsorted"});
       } else {
         const cat=(learnedByKey.get(k)&&learnedByKey.get(k).category)||(known&&known.category)||"Unsorted";
         needAssign.push({name:n,stores:[],category:cat,fuzzy:fuzzyFor(n)});
@@ -757,7 +764,21 @@ function App(){
       flash(toAdd.length===1 ? `"${toAdd[0].name}" added to ${toAdd[0].category}` : `${toAdd.length} items added`);
     }
     setDraft(""); setShowAdd(false);
-    if(needAssign.length) setAssignList(needAssign);
+    // one modal at a time: spelling first, then the assign modal
+    if(conflicts.length){ setNameChoice(conflicts); setPendingAssign(needAssign); }
+    else if(needAssign.length) setAssignList(needAssign);
+  }
+  const pickName=(idx,pick)=>setNameChoice(a=>a.map((x,i)=>i===idx?{...x,pick}:x));
+  // Whichever spelling wins is written to the (shared) dictionary doc, so the
+  // choice sticks for next time instead of being asked again.
+  async function commitNameChoice(){
+    const items=nameChoice.map(c=>({name:c.pick==="typed"?c.typed:c.saved,stores:c.stores,category:c.category}));
+    setNameChoice([]);
+    if(items.length){
+      await writeAdds("namechoice", items);
+      flash(items.length===1?`"${items[0].name}" added to ${items[0].category}`:`${items.length} items added`);
+    }
+    if(pendingAssign.length){ setAssignList(pendingAssign); setPendingAssign([]); }
   }
   const updateAssign=(idx,patch)=>setAssignList(a=>a.map((x,i)=>i===idx?{...x,...patch}:x));
   const toggleAssignStore=(idx,sid)=>setAssignList(a=>a.map((x,i)=>i===idx?{...x,stores:x.stores.includes(sid)?x.stores.filter(y=>y!==sid):[...x.stores,sid]}:x));
@@ -1397,6 +1418,32 @@ function App(){
         <button class="primary" onClick=${()=>setReview([])}>Done</button>
       </div>`:null}
 
+    <!-- spelling chooser: you typed X, the dictionary says Y -->
+    ${nameChoice.length>0?html`
+      <div class="scrim" onClick=${commitNameChoice}></div>
+      <div class="sheet tall">
+        <div class="sheethead"><div class="lead">Which spelling?</div><button class="sheetx" onClick=${commitNameChoice} aria-label="Close">\u00d7</button></div>
+        <div class="hint">Same item either way \u2014 this only picks the name you'll see. Whatever you choose is remembered.</div>
+        ${nameChoice.map((c,idx)=>html`
+          <div class="arow">
+            <div class="dupgrid">
+              <button class=${"catopt dupname"+(c.pick==="typed"?" on":"")} onClick=${()=>pickName(idx,"typed")}>
+                <span class="dupn">${c.typed}</span>
+                <span class="dupmeta"><span class="tag">you typed</span></span>
+              </button>
+              <button class=${"catopt dupname"+(c.pick==="saved"?" on":"")} onClick=${()=>pickName(idx,"saved")}>
+                <span class="dupn">${c.saved}</span>
+                <span class="dupmeta">
+                  <span class="tag">saved</span>
+                  <span class="catchip">${c.category}</span>
+                  <span class="lstores">${(c.stores||[]).map(x=>lsq(scolor(x),sname(x)))}</span>
+                </span>
+              </button>
+            </div>
+          </div>`)}
+        <button class="primary" disabled=${isBusy("namechoice")} onClick=${commitNameChoice}>${isBusy("namechoice")?html`<${Spin}/>Adding\u2026`:(nameChoice.length===1?"Add to list":"Add "+nameChoice.length+" to list")}</button>
+      </div>`:null}
+
     <!-- item editor -->
     ${itemModal?html`
       <div class="scrim" onClick=${()=>setItemModal(null)}></div>
@@ -1480,10 +1527,13 @@ function App(){
         ${!dedupeMigrated?html`<button class="ddm" onClick=${()=>{setMenu(false);setDupPage(1);setDupOpen(true);}}>Merge Duplicates${dupGroups.length?" ("+dupGroups.length+")":""}</button>`:null}
         <div class="ddsep"></div>
         <button class="ddm ddout" onClick=${()=>signOut(auth)}>Sign out</button>
-        <div class=${"ddver"+(stale?" stale":"")}>
-          Version ${BUILD}${swVer&&swVer!==BUILD?" \u00b7 cache "+swVer:""}${stale?" \u00b7 "+liveVer+" available":""}
-        </div>
-        <button class="ddm ddreload" disabled=${reloading} onClick=${hardReload}>${reloading?"Reloading\u2026":"Force reload (clear cache)"}</button>
+        ${stale?html`<button class="ddm ddreload" disabled=${reloading} onClick=${hardReload}>${reloading?"Reloading\u2026":"Update to "+liveVer+" (clear cache)"}</button>`:null}
+        <button class=${"ddver"+(stale?" stale":"")+(reloadArm?" armed":"")} disabled=${reloading}
+          onClick=${()=>{ if(stale||reloadArm){ hardReload(); return; } setReloadArm(true); setTimeout(()=>setReloadArm(false),3000); }}>
+          ${reloading?"Reloading\u2026"
+            :reloadArm?"Tap again to force reload"
+            :html`Version ${BUILD}${swVer&&swVer!==BUILD?" \u00b7 cache "+swVer:""}${stale?" \u00b7 "+liveVer+" available":""}`}
+        </button>
       </div>`:null}
 
     <!-- categories -->

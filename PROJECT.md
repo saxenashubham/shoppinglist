@@ -4,7 +4,7 @@ Single-household shopping-list PWA. Built for two people (me + wife) who shop
 together. Solves one specific problem: items get voice-captured in bulk and then
 land on the wrong store's list.
 
-> Re-verified line-by-line against the source on 2026-09-20 (v63).
+> Re-verified line-by-line against the source on 2026-09-20 (v65).
 > Everything below reflects the code as it actually is, including the parts that
 > are broken. Defects are listed in **Known defects** rather than quietly fixed
 > in prose — if you fix one, delete its row.
@@ -65,8 +65,8 @@ key, set per-worker.
 Actual directory contents:
 
 ```
-app.js                  the entire application (1669 lines)
-styles.css              all styling (422 lines); palette in :root tokens
+app.js                  the entire application (1770 lines)
+styles.css              all styling (439 lines); palette in :root tokens
 index.html              shell (20 lines) — loads fonts, styles.css, app.js
 config.js               Firebase config + ALLOWED_EMAILS + WORKER_URL (committed)
 config.example.js       template for the above
@@ -224,14 +224,35 @@ shown to the user.
   store, category, and time range (7/30/90d, 6mo, 1yr, all), sort by date or
   store, asc/desc. Star from here to add to Regularly Bought.
 
-**Typeahead** — on every add-item input: the Add sheet's quick-add line, the Shop
+**Typeahead** — on every add-item input: the Add sheet's paste box, the Shop
 tab's "Add to *store*" field, and the Regularly Bought staple field. Filters the
 dictionary already in memory (no Firestore query per keystroke), top 5 ranked by
 **frequency × recency** of actual purchases (`n × e^(−days/45)`), prefix matches
-first. Each row shows the name, its category chip and its store letter-squares,
-so you see where it will route before tapping. Tapping adds it instantly, fully
-routed, with **no parser call and no assign modal**. Items already on the list
-render greyed with an "on list" tag — greyed, not hidden.
+first. Each row leads with a green **+** (a ✓ on a greyed row), then the name,
+its category chip and its store letter-squares, so you see where it will route
+before tapping. Tapping adds it instantly, fully routed, with **no parser call
+and no assign modal**. Items already on the list render greyed with an "on list"
+tag — greyed, not hidden.
+
+**Spelling chooser.** A canonical hit merges silently — same dictionary doc
+either way — but *whose spelling wins* is not silent. When a pasted name and the
+saved name differ ("Diapers" typed, "Diaper" stored), `addItems` collects the
+pair instead of substituting, and a sheet offers both in the two-column
+`dupname` layout: **you typed** vs **saved** (with its category and stores).
+The winner is written back to the shared dictionary doc, so the choice sticks
+and the same pair is never asked about twice. Only the paste path does this —
+`addInShop` already keeps your wording, a typeahead tap is already an explicit
+pick of the saved name, and recipe/staple names come from the AI or the staples
+list rather than from you, so the saved spelling stays authoritative there.
+If a paste also produces unknown items, the spelling sheet resolves first and
+the assign modal opens behind it.
+
+**The Add sheet has one input, not two.** The paste box doubles as the typeahead
+source: `draftTail()` matches on whatever has been typed since the last newline,
+comma or semicolon, and picking a suggestion adds the item and consumes that
+fragment via `dropTail()`. So a pasted voice list still splits the normal way,
+and typing a single item still gets suggestions, without a second field to
+choose between.
 
 The dropdown is a **static block below the input**, not an overlay and not inline
 ghost text. Ghost text plus `setSelectionRange` fights Android soft-keyboard
@@ -299,9 +320,37 @@ add/delete categories, reorder categories by drag.
 `nameCaseV1`. Title-cases every list/dictionary/purchased/staple name, merges
 case-duplicate list rows, batches at 400 ops, then sets the flag.
 
-**Version check** — `BUILD` in `app.js` is compared against the live service
-worker cache name; a mismatch shows "cache vN — reload" in the menu and marks
-the corner version stamp stale.
+**Version check & force reload** — `BUILD` in `app.js` is compared against the
+version actually deployed, which the app reads by fetching `./sw.js` with
+`cache:"no-store"` and regexing out its `CACHE` constant. That check runs on load,
+on every return to the foreground, and on regaining connectivity. `sw.js` is
+already the one file that must carry the version, so this adds no third place to
+bump.
+
+This replaced a check that could not work: the old code compared `BUILD` to the
+*local* cache name, but if the shell is stale then `BUILD` is stale too and the
+two agree — the indicator stayed silent in exactly the case it existed for.
+
+On a mismatch an orange **Update available — vN (you're on vM)** banner appears
+with a Reload button, and the menu gains an **Update to vN (clear cache)** item.
+Neither is shown when the versions agree.
+
+The escape hatch when they agree but the app is stale anyway — offline, or a
+wedged shell that the check can't see — is the **version line at the bottom of
+the menu**: tap it once and it arms ("Tap again to force reload"), tap again
+within 3 seconds and it fires. Armed-tap rather than a plain button so a
+mis-tap can't wipe the cache, and hidden in plain sight rather than a permanent
+button so it isn't clutter in the normal case. Don't remove it: the situation it
+covers is precisely the one where the automatic check is wrong.
+
+All three paths run `hardReload()`: delete every `basketly-*` cache, unregister
+every service worker, then `location.replace()` with a cache-busting query. A
+plain reload is not enough once a bad shell is installed.
+
+The service worker is registered with `updateViaCache:"none"` and `reg.update()`
+is called on load and on every foreground — without that the browser is allowed
+to serve `sw.js` itself from the HTTP cache, which is the usual reason a phone
+sits on an old build for a day.
 
 Stores render as lettered squares (first letter, text color auto-picked from the
 store color's brightness). Multi-store items show the other stores' squares
@@ -394,7 +443,9 @@ Run these in order. Step 1 is the one that gets forgotten.
    - `sw.js` → `const CACHE = "basketly-vN"`
    - `app.js` line 18 → `const BUILD = "vN"`
 
-   Both are currently **v63**. They must match — the menu's stale-cache warning
+   Both are currently **v65**. The in-app update check reads the deployed version
+   out of `sw.js`, so a forgotten `sw.js` bump now means the banner never fires
+   even though the app is stale. They must match — the menu's stale-cache warning
    compares them. Do this on *every* change. Skipping the `sw.js` bump means
    installed devices keep serving the stale shell.
 2. **Push the PWA** to GitHub Pages (`index.html` at repo root).
@@ -411,7 +462,7 @@ Worker secrets: `ANTHROPIC_API_KEY` is an encrypted Worker secret
 The service worker is **network-first** with cache fallback, same-origin GETs
 only — new deploys land on the next open, and Firebase/CDN traffic bypasses it.
 
-### After deploying v63
+### After deploying v65
 
 1. Open the app, hamburger → **Merge Duplicates**, work through the groups.
 2. When the list is empty it flips `config.app.dedupeMigrated` to true and the
