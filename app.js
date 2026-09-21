@@ -15,7 +15,7 @@ import {
 import { shoppingListConfig, ALLOWED_EMAILS, WORKER_URL } from "./config.js";
 
 const html = htm.bind(h);
-const BUILD = "v63";  // bump in lockstep with sw.js CACHE every deploy
+const BUILD = "v64";  // bump in lockstep with sw.js CACHE every deploy
 function textOn(hex){ if(!hex||hex[0]!=="#") return "#161d18"; let h=hex.slice(1); if(h.length===3)h=h.split("").map(c=>c+c).join(""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); const L=(0.299*r+0.587*g+0.114*b)/255; return L>0.62?"#161d18":"#fff"; }
 const sqChar=n=>(((n||"?").trim()[0])||"?").toUpperCase();
 const lsq=(color,name,cls)=>html`<i class=${"lsq"+(cls?" "+cls:"")} style=${"background:"+(color||"#ccc")+";color:"+textOn(color)}>${sqChar(name)}</i>`;
@@ -188,10 +188,11 @@ function App(){
   const [purch,setPurch]=useState([]);
   const [page,setPage]=useState("list");
   const [checkedIn,setCheckedIn]=useState(null);
-  const [swVer,setSwVer]=useState("");   // active service-worker cache version, for the deploy check
+  const [swVer,setSwVer]=useState("");     // cache version the ACTIVE service worker installed
+  const [liveVer,setLiveVer]=useState("");  // cache version currently deployed on the server
+  const [reloading,setReloading]=useState(false);
   const [shopAdd,setShopAdd]=useState("");
   const [draft,setDraft]=useState("");
-  const [quickAdd,setQuickAdd]=useState("");      // single-line add on the Add sheet (typeahead source)
   const [dupOpen,setDupOpen]=useState(false);
   const [dupPage,setDupPage]=useState(1);
   const [dupWin,setDupWin]=useState({});          // canonical key -> winning doc id
@@ -428,6 +429,13 @@ function App(){
     await writeAdds("quickadd",[{name:nm,stores:st,category:entry.category||"Unsorted"}]);
     flash(`"${nm}" added to ${entry.category||"Unsorted"}`);
   }
+  // The paste box doubles as the typeahead source: we match on whatever has been
+  // typed since the last newline/comma, and picking a suggestion consumes that
+  // fragment. One input, both behaviours.
+  const TAIL=/[\n,;]/;
+  const tailIdx=t=>{const s=String(t||""); for(let i=s.length-1;i>=0;i--) if(TAIL.test(s[i])) return i; return -1;};
+  const draftTail=t=>String(t||"").slice(tailIdx(t)+1).trim();
+  const dropTail=t=>{const s=String(t||""); const i=tailIdx(s); return i<0?"":s.slice(0,i+1);};
   // Rendered as a static block BELOW the input, not an overlay and not inline ghost
   // text — ghost text + setSelectionRange fights Android autocorrect and IME composition.
   function typeahead(q,{onPick,store,isOn,onLabel}={}){
@@ -448,6 +456,7 @@ function App(){
         const on=isOn?isOn(e):onList(e.name);   // greyed, not hidden — same pattern as Regularly Bought
         const st=store?[...new Set([...(e.stores||[]),store])]:(e.stores||[]);
         return html`<button class=${"tarow"+(on?" off":"")} disabled=${on} onClick=${()=>{ if(!on) onPick(e); }}>
+          <span class="taplus">${on?"\u2713":"+"}</span>
           <span class="taname">${e.name}</span>
           <span class="catchip">${e.category||"Unsorted"}</span>
           <span class="lstores">${st.map(s=>lsq(scolor(s),sname(s)))}</span>
@@ -623,6 +632,44 @@ function App(){
     if(!("caches" in self)) return;
     caches.keys().then(ks=>{const k=ks.find(x=>x.startsWith("basketly-")); if(k) setSwVer(k.slice("basketly-".length));}).catch(()=>{});
   },[]);
+  // What version is actually DEPLOYED? Comparing BUILD to the local cache name
+  // can't answer that: if the shell is stale, BUILD is stale too and the two
+  // agree. So ask the network, bypassing every cache, and read the version out
+  // of sw.js — which is already the one place the version has to be bumped.
+  useEffect(()=>{
+    let dead=false;
+    const check=async ()=>{
+      if(!navigator.onLine) return;
+      try{
+        const r=await fetch("./sw.js?ts="+Date.now(),{cache:"no-store"});
+        if(!r.ok) return;
+        const m=(await r.text()).match(/basketly-(v\d+)/);
+        if(m && !dead) setLiveVer(m[1]);
+      }catch(_){}
+    };
+    check();
+    const onVis=()=>{ if(document.visibilityState==="visible") check(); };
+    document.addEventListener("visibilitychange",onVis);
+    addEventListener("online",check);
+    return ()=>{ dead=true; document.removeEventListener("visibilitychange",onVis); removeEventListener("online",check); };
+  },[]);
+  const stale=!!liveVer && liveVer!==BUILD;
+  // Belt and braces: drop every app cache, tear down the service worker, then
+  // reload. A plain reload is not enough once a bad shell is installed.
+  async function hardReload(){
+    setReloading(true);
+    try{
+      if("caches" in self){
+        const ks=await caches.keys();
+        await Promise.all(ks.filter(k=>k.startsWith("basketly-")).map(k=>caches.delete(k)));
+      }
+      if("serviceWorker" in navigator){
+        const regs=await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r=>r.unregister().catch(()=>{})));
+      }
+    }catch(_){}
+    location.replace(location.pathname+"?v="+Date.now());
+  }
 
   useEffect(()=>{
     if(!user) return;
@@ -709,7 +756,7 @@ function App(){
       await writeAdds("additems", toAdd);
       flash(toAdd.length===1 ? `"${toAdd[0].name}" added to ${toAdd[0].category}` : `${toAdd.length} items added`);
     }
-    setDraft(""); setQuickAdd(""); setShowAdd(false);
+    setDraft(""); setShowAdd(false);
     if(needAssign.length) setAssignList(needAssign);
   }
   const updateAssign=(idx,patch)=>setAssignList(a=>a.map((x,i)=>i===idx?{...x,...patch}:x));
@@ -1147,6 +1194,11 @@ function App(){
     </div>
 
     ${!online?html`<div class="banner offline">Offline \u2014 changes sync when you're back</div>`:null}
+    ${stale?html`
+      <div class="banner upd">
+        <span>Update available \u2014 ${liveVer} (you're on ${BUILD})</span>
+        <button disabled=${reloading} onClick=${hardReload}>${reloading?"Reloading\u2026":"Reload"}</button>
+      </div>`:null}
     ${dueReturns.length>0?html`
       <div class=${"banner ret"+(overdue?" over":"")}>
         <span>${overdue?"\u26a0 Return overdue":"\u23f3 "+dueReturns.length+" return"+(dueReturns.length>1?"s":"")+" due soon"}</span>
@@ -1328,12 +1380,9 @@ function App(){
       <div class="scrim" onClick=${()=>setShowAdd(false)}></div>
       <div class="sheet">
         <div class="sheethead"><div class="lead">Add Items</div><button class="sheetx" onClick=${()=>setShowAdd(false)} aria-label="Close">\u00d7</button></div>
-        <div class="hint">Start typing for something you buy often \u2014 tap it and it goes straight on, already routed.</div>
-        <input class="tin" placeholder="Search your items\u2026" value=${quickAdd} onInput=${e=>setQuickAdd(e.target.value)}
-          onKeyDown=${e=>{if(e.key==="Enter"){e.preventDefault(); const s=suggest(quickAdd,1)[0]; if(s&&!onList(s.name)){ addFromSuggestion(s); setQuickAdd(""); }}}} />
-        ${typeahead(quickAdd,{onPick:e=>{ addFromSuggestion(e); setQuickAdd(""); }})}
-        <div class="hint">Or paste a voice list \u2014 Alexa, WhatsApp, Notes. One line or comma-separated; Basketly splits it and files each item to the right store.</div>
+        <div class="hint">Type or paste \u2014 Alexa, WhatsApp, Notes. One line or comma-separated. Suggestions for what you're typing appear below; tap one and it goes straight on, already routed.</div>
         <textarea placeholder=${"2 lbs onions\ncilantro\npaneer\nmilk\ntoor dal"} value=${draft} onInput=${e=>setDraft(e.target.value)}></textarea>
+        ${typeahead(draftTail(draft),{onPick:e=>{ addFromSuggestion(e); setDraft(dropTail); }})}
         <button class="primary" disabled=${parsing||!draft.trim()} onClick=${addItems}>${parsing?html`<${Spin}/>Routing\u2026`:"Add to list"}</button>
       </div>`:null}
     ${review.length>0?html`
@@ -1431,7 +1480,10 @@ function App(){
         ${!dedupeMigrated?html`<button class="ddm" onClick=${()=>{setMenu(false);setDupPage(1);setDupOpen(true);}}>Merge Duplicates${dupGroups.length?" ("+dupGroups.length+")":""}</button>`:null}
         <div class="ddsep"></div>
         <button class="ddm ddout" onClick=${()=>signOut(auth)}>Sign out</button>
-        <div class=${"ddver"+(swVer&&swVer!==BUILD?" stale":"")}>Version ${BUILD}${swVer&&swVer!==BUILD?html` \u00b7 cache ${swVer} \u2014 reload`:""}</div>
+        <div class=${"ddver"+(stale?" stale":"")}>
+          Version ${BUILD}${swVer&&swVer!==BUILD?" \u00b7 cache "+swVer:""}${stale?" \u00b7 "+liveVer+" available":""}
+        </div>
+        <button class="ddm ddreload" disabled=${reloading} onClick=${hardReload}>${reloading?"Reloading\u2026":"Force reload (clear cache)"}</button>
       </div>`:null}
 
     <!-- categories -->
@@ -1662,8 +1714,15 @@ function App(){
     ${(page==="shop" && checkedIn)?html`
       <div class="submitbar"><div class="inner"><${SlideConfirm} busy=${isBusy("checkout")} label=${shopChecked>0?"Slide to check out \u00b7 "+shopChecked+" bought":"Slide to check out"} onConfirm=${checkOut} /></div></div>`:null}
     ${toast?html`<div class="toast">${toast}</div>`:null}
-    <div class=${"vstamp"+(swVer&&swVer!==BUILD?" stale":"")}>${BUILD}</div>
+    <div class=${"vstamp"+(stale?" stale":"")}>${BUILD}</div>
   `;
 }
 render(html`<${App}/>`, document.getElementById("app"));
-if("serviceWorker" in navigator) addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+if("serviceWorker" in navigator) addEventListener("load",()=>{
+  // updateViaCache:"none" stops the browser serving sw.js itself from the HTTP
+  // cache, which is the usual reason a phone sits on an old build for a day.
+  navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"}).then(reg=>{
+    reg.update().catch(()=>{});
+    document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") reg.update().catch(()=>{}); });
+  }).catch(()=>{});
+});

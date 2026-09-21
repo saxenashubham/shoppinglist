@@ -419,3 +419,12 @@ details.assumed[open] summary::before{content:"\25be ";}
 .dupcat{font-size:12px;font-weight:600;color:#9a5b12;background:#fff7ed;border-radius:6px;padding:5px 8px;margin-bottom:8px}
 .rpbody .arow .primary.sm{width:100%;margin-top:2px}
 .rpbody .ghost{display:block;width:100%;text-align:center;margin-top:10px}
+/* ---- v64: suggestion add affordance + update banner ---- */
+.tarow .taplus{flex:0 0 auto;width:24px;height:24px;border-radius:7px;background:var(--green-tint);color:var(--green-deep);
+  display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;line-height:1}
+.tarow.off .taplus{background:#eef1ec;color:var(--muted);font-size:13px}
+.banner.upd{background:var(--orange);position:sticky;top:0;z-index:5}
+.banner.upd button{background:rgba(255,255,255,.18);border-radius:8px;padding:5px 12px;text-decoration:none;flex:0 0 auto}
+.banner.upd button:disabled{opacity:.6}
+.ddm.ddreload{color:var(--orange);font-size:14px;padding:10px;text-align:center}
+.ddm.ddreload:disabled{opacity:.6}
